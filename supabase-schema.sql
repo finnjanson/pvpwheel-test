@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS games (
     end_time TIMESTAMP WITH TIME ZONE,
     bet_amount NUMERIC,
     nft_deposit_id TEXT,
-    nft_deposit_amount NUMERIC
+    nft_deposit_amount NUMERIC,
+    countdown_ends_at TIMESTAMP WITH TIME ZONE -- Добавлено для таймера
 );
 
 -- Set up Row Level Security (RLS) for 'games' table
@@ -57,7 +58,13 @@ CREATE TABLE IF NOT EXISTS gifts (
     description TEXT,
     image_url TEXT,
     value NUMERIC NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    emoji TEXT, -- Добавлено для эмодзи
+    base_value NUMERIC, -- Добавлено для базовой стоимости
+    rarity TEXT, -- Добавлено для редкости
+    is_nft BOOLEAN DEFAULT FALSE, -- Добавлено для NFT
+    nft_address TEXT, -- Добавлено для адреса NFT
+    nft_item_id TEXT -- Добавлено для ID элемента NFT
 );
 
 -- Set up Row Level Security (RLS) for 'gifts' table
@@ -70,10 +77,10 @@ CREATE POLICY "Enable read access for all users" ON gifts FOR SELECT USING (true
 CREATE POLICY "Enable insert for authenticated users only" ON gifts FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- Seed initial data for 'gifts' table (optional, can be done via script)
-INSERT INTO gifts (name, description, image_url, value) VALUES
-('Small Gift', 'A small token of appreciation', '/images/gifts-icon.png', 10),
-('Medium Gift', 'A decent reward', '/images/gifts-icon.png', 50),
-('Large Gift', 'A generous present', '/images/gifts-icon.png', 100)
+INSERT INTO gifts (name, description, image_url, value, emoji, base_value, rarity, is_nft) VALUES
+('Small Gift', 'A small token of appreciation', '/images/gifts-icon.png', 10, '🎁', 0.1, 'common', FALSE),
+('Medium Gift', 'A decent reward', '/images/gifts-icon.png', 50, '💎', 0.5, 'rare', FALSE),
+('Large Gift', 'A generous present', '/images/gifts-icon.png', 100, '⭐', 1.0, 'epic', FALSE)
 ON CONFLICT (id) DO NOTHING; -- Prevents re-inserting if already exists
 
 -- Game participants table (junction table)

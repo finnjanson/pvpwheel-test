@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Loader2 } from "lucide-react"
 
+console.log("WheelGame.tsx: Компонент WheelGame загружен.")
+
 // Telegram WebApp types
 interface TelegramUser {
   id: number
@@ -118,6 +120,7 @@ const COUNTDOWN_DURATION = 60
 const NFT_DEPOSIT_TELEGRAM = "@pwpwheel" // Telegram username for NFT gift transfers
 
 export default function WheelGame() {
+  console.log("WheelGame.tsx: Рендеринг компонента WheelGame.")
   const {
     currentGame,
     isLoadingGame,
@@ -201,8 +204,10 @@ export default function WheelGame() {
 
   // Helper function to load and cache Telegram avatars
   const loadTelegramAvatar = useCallback(async (photoUrl: string): Promise<HTMLImageElement> => {
+    console.log("WheelGame.tsx: Попытка загрузить аватар:", photoUrl)
     // Check cache first
     if (avatarCache.current.has(photoUrl)) {
+      console.log("WheelGame.tsx: Аватар найден в кэше:", photoUrl)
       return avatarCache.current.get(photoUrl)!
     }
 
@@ -210,12 +215,12 @@ export default function WheelGame() {
       const img = new Image()
       // Remove crossOrigin to avoid CORS issues with Telegram avatars
       img.onload = () => {
-        console.log("Avatar loaded successfully:", photoUrl)
+        console.log("WheelGame.tsx: Аватар успешно загружен:", photoUrl)
         avatarCache.current.set(photoUrl, img)
         resolve(img)
       }
       img.onerror = (error) => {
-        console.error("Avatar failed to load:", photoUrl, error)
+        console.error("WheelGame.tsx: Ошибка загрузки аватара:", photoUrl, error)
         reject(error)
       }
       img.src = photoUrl
@@ -224,21 +229,27 @@ export default function WheelGame() {
 
   // Preload all player avatars
   const preloadAvatars = useCallback(async () => {
+    console.log("WheelGame.tsx: Предварительная загрузка аватаров...")
     const promises = players
       .filter((player) => player.telegramUser?.photo_url)
       .map((player) => {
-        console.log("Preloading avatar for:", player.name, "URL:", player.telegramUser?.photo_url)
+        console.log(
+          "WheelGame.tsx: Предварительная загрузка аватара для:",
+          player.name,
+          "URL:",
+          player.telegramUser?.photo_url,
+        )
         return loadTelegramAvatar(player.telegramUser!.photo_url!)
       })
 
-    console.log("Found", promises.length, "avatars to preload")
+    console.log("WheelGame.tsx: Найдено", promises.length, "аватаров для предварительной загрузки")
 
     try {
       await Promise.all(promises)
-      console.log("All avatars preloaded successfully")
+      console.log("WheelGame.tsx: Все аватары предварительно загружены успешно")
       return true // Return success status
     } catch (error) {
-      console.warn("Some avatars failed to load:", error)
+      console.warn("WheelGame.tsx: Некоторые аватары не удалось загрузить:", error)
       return false
     }
   }, [players, loadTelegramAvatar])
@@ -272,11 +283,18 @@ export default function WheelGame() {
   )
 
   const drawWheel = useCallback(() => {
+    console.log("WheelGame.tsx: Рисование колеса...")
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) {
+      console.log("WheelGame.tsx: Canvas не найден, пропуск рисования колеса.")
+      return
+    }
 
     const ctx = canvas.getContext("2d")
-    if (!ctx) return
+    if (!ctx) {
+      console.log("WheelGame.tsx: Контекст Canvas не найден, пропуск рисования колеса.")
+      return
+    }
 
     const centerX = canvas.width / 2
     const centerY = canvas.height / 2
@@ -286,6 +304,7 @@ export default function WheelGame() {
 
     // Use activePlayers instead of players
     const activePlayers = dbPlayers.length > 0 ? dbPlayers : players
+    console.log("WheelGame.tsx: Активные игроки для рисования:", activePlayers.length)
 
     if (activePlayers.length === 0) {
       // Draw empty wheel with transparent background
@@ -301,7 +320,7 @@ export default function WheelGame() {
       ctx.strokeStyle = "rgba(156, 163, 175, 0.5)"
       ctx.lineWidth = 3
       ctx.stroke()
-
+      console.log("WheelGame.tsx: Нарисовано пустое колесо.")
       return
     }
 
@@ -338,7 +357,7 @@ export default function WheelGame() {
 
         // Check if player has Telegram photo and it's cached
         if (player.telegramUser?.photo_url && avatarCache.current.has(player.telegramUser.photo_url)) {
-          console.log("Drawing cached avatar for:", player.name)
+          console.log("WheelGame.tsx: Рисование кэшированного аватара для:", player.name)
           const avatarImg = avatarCache.current.get(player.telegramUser.photo_url)!
 
           try {
@@ -356,17 +375,17 @@ export default function WheelGame() {
             ctx.arc(0, 0, avatarRadius, 0, 2 * Math.PI) // Changed from (0, -8) to (0, 0)
             ctx.stroke()
           } catch (error) {
-            console.error("Error drawing avatar for:", player.name, error)
+            console.error("WheelGame.tsx: Ошибка рисования аватара для:", player.name, error)
             drawFallbackAvatar()
           }
         } else {
           // Draw fallback avatar
           console.log(
-            "Drawing fallback avatar for:",
+            "WheelGame.tsx: Рисование запасного аватара для:",
             player.name,
-            "Has photo URL:",
+            "Есть URL фото:",
             !!player.telegramUser?.photo_url,
-            "Is cached:",
+            "В кэше:",
             player.telegramUser?.photo_url ? avatarCache.current.has(player.telegramUser.photo_url) : false,
           )
           drawFallbackAvatar()
@@ -410,6 +429,7 @@ export default function WheelGame() {
     ctx.beginPath()
     ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI)
     ctx.stroke()
+    console.log("WheelGame.tsx: Колесо нарисовано.")
   }, [players, dbPlayers])
 
   const addPlayer = () => {
@@ -452,6 +472,7 @@ export default function WheelGame() {
   const [currentPlayer, setCurrentPlayer] = useState<Player | null>(null)
 
   const spinWheel = useCallback(async () => {
+    console.log("WheelGame.tsx: Запуск вращения колеса.")
     // Use activePlayers for consistency with display
     const activePlayers = dbPlayers.length > 0 ? dbPlayers : players
 
@@ -520,7 +541,7 @@ export default function WheelGame() {
             // Reload match history
             await loadMatchHistory()
           } catch (error) {
-            console.error("Failed to complete game in database:", error)
+            console.error("WheelGame.tsx: Не удалось завершить игру в базе данных:", error)
           }
         }
 
@@ -552,7 +573,7 @@ export default function WheelGame() {
           try {
             await getCurrentGame(rollNumber + 1)
           } catch (error) {
-            console.error("Failed to create new game:", error)
+            console.error("WheelGame.tsx: Не удалось создать новую игру:", error)
           }
         }
 
@@ -574,19 +595,22 @@ export default function WheelGame() {
     completeGame,
     loadMatchHistory,
     getCurrentGame,
+    dbPlayers, // Добавлено для зависимости
   ])
 
   // Auto-spin when countdown reaches 0
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект авто-вращения: gameCountdown", gameCountdown, "isSpinningState", isSpinningState)
     const activePlayers = dbPlayers.length > 0 ? dbPlayers : players
     if (gameCountdown === 0 && !isSpinningState && activePlayers.length >= 2) {
-      console.log("Database countdown reached 0, spinning wheel")
+      console.log("WheelGame.tsx: Таймер базы данных достиг 0, вращение колеса.")
       spinWheel()
     }
   }, [gameCountdown, isSpinningState, dbPlayers, players, spinWheel])
 
   // Draw wheel when players change
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект рисования колеса: игроки изменились.")
     const loadAndDrawWheel = async () => {
       const avatarsLoaded = await preloadAvatars()
       drawWheel()
@@ -600,6 +624,7 @@ export default function WheelGame() {
 
   // Redraw wheel when database players change
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект рисования колеса: игроки из БД изменились.")
     const loadAndDrawWheel = async () => {
       const avatarsLoaded = await preloadAvatars()
       drawWheel()
@@ -613,6 +638,7 @@ export default function WheelGame() {
 
   // Redraw wheel when switching back to PvP tab or closing match history
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект рисования колеса: активная вкладка/история матчей изменились.")
     if (activeTab === "pvp" && !showMatchHistory) {
       const loadAndDrawWheel = async () => {
         await preloadAvatars()
@@ -624,6 +650,7 @@ export default function WheelGame() {
 
   // Cleanup
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект очистки.")
     return () => {
       if (countdownRef.current) clearTimeout(countdownRef.current)
       if (spinTimeoutRef.current) clearTimeout(spinTimeoutRef.current)
@@ -632,6 +659,7 @@ export default function WheelGame() {
 
   // Initialize inventory from database (real player inventory)
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект инициализации инвентаря игрока.")
     // Use real player inventory instead of simulated data
     if (playerInventory && playerInventory.length > 0) {
       const realInventory = playerInventory.map((item) => ({
@@ -654,6 +682,7 @@ export default function WheelGame() {
 
   // Load current game on component mount (for cross-device visibility)
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект загрузки текущей игры при монтировании.")
     const loadCurrentGame = async () => {
       try {
         console.log("🎮 PvP Wheel: Загрузка текущего состояния игры...")
@@ -678,6 +707,13 @@ export default function WheelGame() {
         }
       } catch (error) {
         console.error("❌ Не удалось загрузить текущую игру:", error)
+      } finally {
+        // Устанавливаем isLoadingGame в false после попытки загрузки
+        // Это важно, чтобы UI не оставался в состоянии загрузки
+        // если getCurrentGame завершится ошибкой или не найдет игру.
+        // Предполагается, что isLoadingGame управляется useGameDatabase
+        // и этот useEffect просто реагирует на его изменения.
+        // Если isLoadingGame управляется здесь, то нужно добавить useState для него.
       }
     }
 
@@ -689,7 +725,9 @@ export default function WheelGame() {
 
   // Mock Telegram WebApp for local development
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект инициализации Telegram WebApp.")
     if (typeof window !== "undefined" && !window.Telegram) {
+      console.log("WheelGame.tsx: Мокирование Telegram WebApp.")
       window.Telegram = {
         WebApp: {
           initData:
@@ -785,15 +823,20 @@ export default function WheelGame() {
     if (window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready()
       window.Telegram.WebApp.expand()
-      console.log("Telegram WebApp initialized and expanded.")
-      console.log("Telegram WebApp initData:", window.Telegram.WebApp.initDataUnsafe)
+      console.log("WheelGame.tsx: Telegram WebApp инициализирован и развернут.")
+      console.log("WheelGame.tsx: Telegram WebApp initData:", window.Telegram.WebApp.initDataUnsafe)
+      setWebApp(window.Telegram.WebApp) // Устанавливаем webApp в состояние
+      setTelegramUser(window.Telegram.WebApp.initDataUnsafe?.user || null) // Устанавливаем telegramUser
+    } else {
+      console.warn("WheelGame.tsx: Объект Telegram WebApp не найден или не в среде браузера.")
     }
   }, [])
 
   // Subscribe to game changes
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект подписки на изменения игры.")
     const unsubscribe = subscribeToGameChanges((payload) => {
-      console.log("Realtime change:", payload)
+      console.log("WheelGame.tsx: Изменение в реальном времени:", payload)
       if (payload.eventType === "UPDATE" || payload.eventType === "INSERT") {
         const updatedGame = payload.new
         if (updatedGame.status === "waiting" && updatedGame.player1_id && !updatedGame.player2_id) {
@@ -846,6 +889,7 @@ export default function WheelGame() {
 
   // Handle initial game load from database
   useEffect(() => {
+    console.log("WheelGame.tsx: Эффект обработки начальной загрузки игры из БД.")
     if (!isLoadingGame && !errorGame && currentGame) {
       if (currentGame.status === "waiting") {
         setGameState({ status: "waiting", gameId: currentGame.id, player1Id: currentGame.player1_id })
@@ -892,11 +936,13 @@ export default function WheelGame() {
   }, [currentGame, isLoadingGame, errorGame, setGameState, startTimer, stopTimer, resetTimer])
 
   const handleCreateGame = useCallback(async () => {
+    console.log("WheelGame.tsx: Обработчик создания игры.")
     const userId = window.Telegram.WebApp.initDataUnsafe?.user?.id?.toString() || "mock_user_1"
     await createGame(userId)
   }, [createGame])
 
   const handleJoinGame = useCallback(async () => {
+    console.log("WheelGame.tsx: Обработчик присоединения к игре.")
     const userId = window.Telegram.WebApp.initDataUnsafe?.user?.id?.toString() || "mock_user_2"
     if (currentGame?.id) {
       await joinGame(currentGame.id, userId)
@@ -904,6 +950,7 @@ export default function WheelGame() {
   }, [joinGame, currentGame])
 
   const handleSpin = useCallback(async () => {
+    console.log("WheelGame.tsx: Обработчик вращения колеса.")
     if (gameState.status === "active" && gameState.gameId) {
       const roll = Math.floor(Math.random() * 100) + 1 // Roll between 1 and 100
       const winnerId = roll % 2 === 0 ? gameState.player1Id : gameState.player2Id // Even for player1, odd for player2
@@ -916,17 +963,19 @@ export default function WheelGame() {
   }, [gameState, spinWheelHook, updateGameRollAndWinner])
 
   const handleResetGame = useCallback(() => {
+    console.log("WheelGame.tsx: Обработчик сброса игры.")
     resetWheel()
     setGameState({ status: "idle" })
     resetTimer()
   }, [resetWheel, setGameState, resetTimer])
 
   const handleNftDeposit = useCallback(() => {
+    console.log("WheelGame.tsx: Обработчик депозита NFT.")
     setShowNftDeposit(true)
   }, [])
 
   const confirmNftDeposit = useCallback(() => {
-    console.log(`Depositing NFT with amount: ${nftAmount}`)
+    console.log(`WheelGame.tsx: Подтверждение депозита NFT с суммой: ${nftAmount}`)
     // Here you would integrate with TON blockchain or similar
     setShowNftDeposit(false)
     setNftAmount("")
@@ -934,6 +983,7 @@ export default function WheelGame() {
   }, [nftAmount])
 
   const handleGiftSelection = useCallback(async () => {
+    console.log("WheelGame.tsx: Обработчик выбора подарка.")
     const gifts = await fetchGifts()
     if (gifts) {
       setAvailableGifts(gifts)
@@ -942,8 +992,9 @@ export default function WheelGame() {
   }, [fetchGifts])
 
   const confirmGiftSelection = useCallback(() => {
+    console.log("WheelGame.tsx: Подтверждение выбора подарка.")
     if (selectedGift) {
-      console.log(`Selected gift: ${selectedGift.name} (Value: ${selectedGift.value})`)
+      console.log(`WheelGame.tsx: Выбранный подарок: ${selectedGift.name} (Значение: ${selectedGift.value})`)
       // Logic to apply gift, e.g., add to user inventory, use in game
     }
     setShowGiftSelection(false)
@@ -951,6 +1002,14 @@ export default function WheelGame() {
   }, [selectedGift])
 
   const renderGameContent = () => {
+    console.log(
+      "WheelGame.tsx: Рендеринг игрового контента. Текущий статус:",
+      gameState.status,
+      "isLoadingGame:",
+      isLoadingGame,
+      "errorGame:",
+      errorGame,
+    )
     if (isLoadingGame) {
       return (
         <div className="flex flex-col items-center justify-center h-full">
@@ -1005,37 +1064,7 @@ export default function WheelGame() {
           <>
             <h1 className="text-3xl font-bold mb-8">Игра началась!</h1>
             <div className="wheel-container relative">
-              <div
-                className="wheel"
-                style={{
-                  transform: `rotate(${spinResult.rotation}deg)`,
-                  transition: isSpinningState ? "transform 4s cubic-bezier(0.25, 0.1, 0.25, 1)" : "none",
-                }}
-              >
-                {Array.from({ length: 10 }, (_, i) => (
-                  <div
-                    key={i}
-                    className="segment absolute w-1/2 h-1/2 flex justify-center items-center text-white font-bold text-2xl"
-                    style={{
-                      transform: `rotate(${i * 36}deg) skewY(54deg)`,
-                      transformOrigin: "bottom right",
-                      backgroundColor: i % 2 === 0 ? "#ff4d4d" : "#4d4dff",
-                      left: "50%",
-                      top: "50%",
-                    }}
-                  >
-                    <span
-                      style={{
-                        transform: `skewY(-54deg) rotate(${i * -36}deg)`,
-                        position: "relative",
-                        zIndex: 1,
-                      }}
-                    >
-                      {i + 1}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <canvas ref={canvasRef} width={300} height={300} className="wheel-canvas" />
               <div className="pointer absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[15px] border-r-[15px] border-b-[30px] border-l-transparent border-r-transparent border-b-yellow-400 z-10" />
             </div>
             <Button onClick={spinWheel} disabled={isSpinningState} className="w-48 h-12 text-lg mt-8">

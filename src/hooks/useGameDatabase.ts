@@ -6,6 +6,8 @@ import type { Database } from "@/lib/supabase" // Assuming you have a types file
 import type { RealtimeChannel } from "@supabase/supabase-js"
 import { dbHelpers } from "../lib/supabase"
 
+console.log("useGameDatabase.ts: Хук useGameDatabase загружен.")
+
 // Define types for Game and Gift
 interface Game {
   id: string
@@ -82,6 +84,7 @@ interface ConnectionTestResult {
 }
 
 export const useGameDatabase = () => {
+  console.log("useGameDatabase.ts: Инициализация хука useGameDatabase.")
   const supabase = createClientComponentClient<Database>()
   const [currentGameId, setCurrentGameId] = useState<string | null>(null)
   const [dbPlayers, setDbPlayers] = useState<any[]>([])
@@ -103,23 +106,24 @@ export const useGameDatabase = () => {
 
   // Initialize player from Telegram data
   const initializePlayer = useCallback(async (telegramUser: TelegramUser) => {
+    console.log("useGameDatabase.ts: initializePlayer вызван.")
     try {
       setLoading(true)
 
       // First check if Supabase is properly configured
       if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-        console.error("Supabase environment variables not configured")
+        console.error("useGameDatabase.ts: Переменные окружения Supabase не настроены.")
         setError("Database not configured. Please check environment variables.")
         return null
       }
 
-      console.log("Attempting to initialize player:", telegramUser.id, telegramUser.username)
+      console.log("useGameDatabase.ts: Попытка инициализировать игрока:", telegramUser.id, telegramUser.username)
 
       const { data: player, error } = await dbHelpers.getOrCreatePlayer(telegramUser)
 
       if (error) {
-        console.error("Error creating player:", error)
-        console.error("Error details:", {
+        console.error("useGameDatabase.ts: Ошибка создания игрока:", error)
+        console.error("useGameDatabase.ts: Детали ошибки:", {
           message: (error as any).message,
           details: (error as any).details,
           hint: (error as any).hint,
@@ -129,11 +133,11 @@ export const useGameDatabase = () => {
         return null
       }
 
-      console.log("Player initialized successfully:", player)
+      console.log("useGameDatabase.ts: Игрок успешно инициализирован:", player)
       setCurrentPlayer(player)
       return player
     } catch (err) {
-      console.error("Error initializing player:", err)
+      console.error("useGameDatabase.ts: Ошибка инициализации игрока:", err)
       setError("Failed to initialize player")
       return null
     } finally {
@@ -143,38 +147,41 @@ export const useGameDatabase = () => {
 
   // Load available gifts
   const loadAvailableGifts = useCallback(async () => {
+    console.log("useGameDatabase.ts: loadAvailableGifts вызван.")
     try {
       const { data: gifts, error } = await dbHelpers.getAllGifts()
 
       if (error) {
-        console.error("Error loading gifts:", error)
+        console.error("useGameDatabase.ts: Ошибка загрузки подарков:", error)
         return
       }
 
       setAvailableGifts(gifts || [])
     } catch (err) {
-      console.error("Error loading gifts:", err)
+      console.error("useGameDatabase.ts: Ошибка загрузки подарков:", err)
     }
   }, [])
 
   // Load player inventory
   const loadPlayerInventory = useCallback(async (playerId: string) => {
+    console.log("useGameDatabase.ts: loadPlayerInventory вызван для игрока:", playerId)
     try {
       const { data: inventory, error } = await dbHelpers.getPlayerGifts(playerId)
 
       if (error) {
-        console.error("Error loading player inventory:", error)
+        console.error("useGameDatabase.ts: Ошибка загрузки инвентаря игрока:", error)
         return
       }
 
       setPlayerInventory(inventory || [])
     } catch (err) {
-      console.error("Error loading player inventory:", err)
+      console.error("useGameDatabase.ts: Ошибка загрузки инвентаря игрока:", err)
     }
   }, [])
 
   // Participant subscription setup
   const setupParticipantSubscription = async (gameId: string) => {
+    console.log("useGameDatabase.ts: setupParticipantSubscription вызван для игры:", gameId)
     const participantSubscription = supabase
       .channel(`game_participants_${gameId}`)
       .on(
@@ -186,19 +193,19 @@ export const useGameDatabase = () => {
           filter: `game_id=eq.${gameId}`,
         },
         async (payload) => {
-          console.log("Participant state changed:", payload)
+          console.log("useGameDatabase.ts: Состояние участника изменилось:", payload)
           try {
             // Force refresh participants on any change
             await loadGameParticipants(gameId)
             // Also refresh game state in case it was affected
             await getCurrentGame()
           } catch (err) {
-            console.error("Error handling participant change:", err)
+            console.error("useGameDatabase.ts: Ошибка обработки изменения участника:", err)
           }
         },
       )
       .subscribe((status) => {
-        console.log(`Participant subscription status for game ${gameId}:`, status)
+        console.log(`useGameDatabase.ts: Статус подписки участника для игры ${gameId}:`, status)
       })
 
     return participantSubscription
@@ -206,6 +213,7 @@ export const useGameDatabase = () => {
 
   // Type-safe game helper functions
   const getFreshGames = async (): Promise<Game[]> => {
+    console.log("useGameDatabase.ts: getFreshGames вызван.")
     try {
       const { data: games, error } = await supabase
         .from("games")
@@ -217,12 +225,13 @@ export const useGameDatabase = () => {
       if (error) throw error
       return games || []
     } catch (err) {
-      console.error("Error fetching fresh games:", err)
+      console.error("useGameDatabase.ts: Ошибка получения свежих игр:", err)
       return []
     }
   }
 
   const getCurrentGame = async (): Promise<Game | null> => {
+    console.log("useGameDatabase.ts: getCurrentGame (внутренний) вызван.")
     if (!currentGameId) return null
     try {
       const { data: game, error } = await supabase.from("games").select("*").eq("id", currentGameId).single()
@@ -230,13 +239,14 @@ export const useGameDatabase = () => {
       if (error) throw error
       return game
     } catch (err) {
-      console.error("Error fetching current game:", err)
+      console.error("useGameDatabase.ts: Ошибка получения текущей игры (внутренний):", err)
       return null
     }
   }
 
   // Get fresh games data with caching
   const getFreshGamesData = async () => {
+    console.log("useGameDatabase.ts: getFreshGamesData вызван.")
     try {
       const cacheKey = "current_games"
       const cacheTime = 2000 // 2 seconds cache
@@ -245,6 +255,7 @@ export const useGameDatabase = () => {
       const cachedData = (window as any).__gamesCache?.[cacheKey]
       const now = Date.now()
       if (cachedData && now - cachedData.timestamp < cacheTime) {
+        console.log("useGameDatabase.ts: Данные игр получены из кэша.")
         return cachedData.data
       }
 
@@ -270,7 +281,7 @@ export const useGameDatabase = () => {
         .order("created_at", { ascending: false })
 
       if (error) {
-        console.error("Error fetching fresh games:", error)
+        console.error("useGameDatabase.ts: Ошибка получения свежих игр:", error)
         return []
       }
 
@@ -282,38 +293,45 @@ export const useGameDatabase = () => {
         data: games,
         timestamp: now,
       }
-
+      console.log("useGameDatabase.ts: Свежие данные игр получены и закэшированы.")
       return games
     } catch (err) {
-      console.error("Error in getFreshGames:", err)
+      console.error("useGameDatabase.ts: Ошибка в getFreshGames:", err)
       return []
     }
   }
 
   // Get or create current game
   const getCurrentGameData = useCallback(async (rollNumber: number) => {
+    console.log("useGameDatabase.ts: getCurrentGameData (публичный) вызван с rollNumber:", rollNumber)
     try {
-      console.log("🎯 Loading current game...", rollNumber > 0 ? `Roll #${rollNumber}` : "Existing game")
+      console.log(
+        "🎯 useGameDatabase.ts: Загрузка текущей игры...",
+        rollNumber > 0 ? `Roll #${rollNumber}` : "Существующая игра",
+      )
       setLoading(true)
+      setIsLoadingGame(true) // Устанавливаем isLoadingGame в true в начале
 
       // First, try to get current waiting game
       const { data: currentGame, error: fetchError } = await dbHelpers.getCurrentGame()
 
       if (fetchError) {
-        console.error("❌ Error fetching current game:", fetchError)
+        console.error("❌ useGameDatabase.ts: Ошибка получения текущей игры:", fetchError)
         setError("Failed to load current game")
+        setErrorGame(fetchError as Error) // Устанавливаем errorGame
         return null
       }
 
       if (currentGame) {
         console.log(
-          "✅ Found existing game:",
+          "✅ useGameDatabase.ts: Найдена существующая игра:",
           currentGame.roll_number,
-          "with",
+          "с",
           currentGame.game_participants?.length || 0,
-          "players",
+          "игроками",
         )
         setCurrentGameId(currentGame.id)
+        setCurrentGame(currentGame) // Устанавливаем currentGame
 
         // Load participants for this game
         const participants = currentGame.game_participants || []
@@ -347,10 +365,10 @@ export const useGameDatabase = () => {
         // Check if there's an existing countdown for this game
         const { timeLeft } = await dbHelpers.getGameCountdown(currentGame.id)
         if (timeLeft !== null && timeLeft > 0) {
-          console.log("✅ Found existing countdown:", timeLeft, "seconds remaining")
+          console.log("✅ useGameDatabase.ts: Найден существующий обратный отсчет:", timeLeft, "секунд осталось")
           setGameCountdown(timeLeft)
         } else {
-          console.log("ℹ️ No active countdown for this game")
+          console.log("ℹ️ useGameDatabase.ts: Нет активного обратного отсчета для этой игры")
           setGameCountdown(null)
         }
 
@@ -360,30 +378,35 @@ export const useGameDatabase = () => {
       // If no current game, create a new one ONLY if we have a valid roll number
       // This prevents creating multiple games unnecessarily
       if (rollNumber && rollNumber > 0) {
-        console.log("🆕 Creating new game for Roll #" + rollNumber)
+        console.log("🆕 useGameDatabase.ts: Создание новой игры для Roll #" + rollNumber)
         const { data: newGame, error: createError } = await dbHelpers.createGame(rollNumber)
 
         if (createError) {
-          console.error("❌ Error creating new game:", createError)
+          console.error("❌ useGameDatabase.ts: Ошибка создания новой игры:", createError)
           setError("Failed to create new game")
+          setErrorGame(createError as Error) // Устанавливаем errorGame
           return null
         }
 
-        console.log("✅ Created new game:", newGame.id)
+        console.log("✅ useGameDatabase.ts: Создана новая игра:", newGame.id)
         setCurrentGameId(newGame.id)
+        setCurrentGame(newGame) // Устанавливаем currentGame
         setDbPlayers([]) // Empty players for new game
         setGameCountdown(null) // Reset countdown for new game
         return newGame
       } else {
-        console.log("ℹ️ No current game found")
+        console.log("ℹ️ useGameDatabase.ts: Текущая игра не найдена и rollNumber не предоставлен для создания новой.")
+        setCurrentGame(null) // Устанавливаем currentGame в null
         return null
       }
     } catch (err) {
-      console.error("❌ Error getting current game:", err)
+      console.error("❌ useGameDatabase.ts: Ошибка получения текущей игры:", err)
       setError("Failed to get current game")
+      setErrorGame(err as Error) // Устанавливаем errorGame
       return null
     } finally {
       setLoading(false)
+      setIsLoadingGame(false) // Устанавливаем isLoadingGame в false в конце
     }
   }, [])
 
@@ -396,10 +419,17 @@ export const useGameDatabase = () => {
       color: string,
       positionIndex: number,
     ) => {
+      console.log("useGameDatabase.ts: joinGameWithGifts вызван.")
       try {
         setLoading(true)
 
-        console.log("Joining game with gifts:", { gameId, playerId, giftSelections, color, positionIndex })
+        console.log("useGameDatabase.ts: Присоединение к игре с подарками:", {
+          gameId,
+          playerId,
+          giftSelections,
+          color,
+          positionIndex,
+        })
 
         // Validate inputs
         if (!gameId || !playerId || !giftSelections || giftSelections.length === 0) {
@@ -416,8 +446,8 @@ export const useGameDatabase = () => {
         )
 
         if (joinError) {
-          console.error("Error joining game:", joinError)
-          console.error("Join error details:", {
+          console.error("useGameDatabase.ts: Ошибка присоединения к игре:", joinError)
+          console.error("useGameDatabase.ts: Детали ошибки присоединения:", {
             message: joinError.message,
             details: joinError.details,
             hint: joinError.hint,
@@ -428,14 +458,14 @@ export const useGameDatabase = () => {
           return null
         }
 
-        console.log("Successfully joined game:", participant)
+        console.log("useGameDatabase.ts: Успешно присоединился к игре:", participant)
 
         // Update player inventory (reduce gift quantities)
         for (const selection of giftSelections) {
           try {
             await dbHelpers.updatePlayerGifts(playerId, selection.giftId, -selection.quantity)
           } catch (inventoryError) {
-            console.error("Error updating player gifts:", inventoryError)
+            console.error("useGameDatabase.ts: Ошибка обновления подарков игрока:", inventoryError)
             // Continue with other gifts even if one fails
           }
         }
@@ -445,7 +475,7 @@ export const useGameDatabase = () => {
 
         return participant
       } catch (err) {
-        console.error("Error joining game with gifts:", err)
+        console.error("useGameDatabase.ts: Ошибка присоединения к игре с подарками:", err)
         const errorMessage = err instanceof Error ? err.message : "Unknown error"
         setError(`Failed to join game: ${errorMessage}`)
         return null
@@ -458,39 +488,40 @@ export const useGameDatabase = () => {
 
   // Load game participants
   const loadGameParticipants = useCallback(async (gameId: string) => {
+    console.log("useGameDatabase.ts: loadGameParticipants вызван для игры:", gameId)
     try {
-      console.log("Loading participants for game:", gameId)
+      console.log("useGameDatabase.ts: Загрузка участников для игры:", gameId)
 
       const { data: participants, error } = await supabase
         .from("game_participants")
         .select(`
-        *,
-        players (
-          id,
-          username,
-          first_name,
-          last_name,
-          photo_url,
-          is_premium
-        ),
-        game_participant_gifts (
-          quantity,
-          gifts (
-            emoji,
-            name,
-            base_value
-          )
-        )
-      `)
+         *,
+         players (
+           id,
+           username,
+           first_name,
+           last_name,
+           photo_url,
+           is_premium
+         ),
+         game_participant_gifts (
+           quantity,
+           gifts (
+             emoji,
+             name,
+             base_value
+           )
+         )
+       `)
         .eq("game_id", gameId)
         .order("position_index")
 
       if (error) {
-        console.error("Error loading game participants:", error)
+        console.error("useGameDatabase.ts: Ошибка загрузки участников игры:", error)
         return []
       }
 
-      console.log("Loaded participants:", participants)
+      console.log("useGameDatabase.ts: Загруженные участники:", participants)
 
       // Transform to match the Player interface
       const transformedPlayers = (participants || []).map((participant: any) => {
@@ -528,12 +559,13 @@ export const useGameDatabase = () => {
       setDbPlayers(transformedPlayers)
       return transformedPlayers
     } catch (err) {
-      console.error("Error loading game participants:", err)
+      console.error("useGameDatabase.ts: Ошибка загрузки участников игры:", err)
       return []
     }
   }, [])
   const completeGame = useCallback(
     async (gameId: string, winnerId: string, winnerChance: number, totalGiftValue: number) => {
+      console.log("useGameDatabase.ts: completeGame вызван.")
       try {
         setLoading(true)
 
@@ -546,7 +578,7 @@ export const useGameDatabase = () => {
         })
 
         if (error) {
-          console.error("Error completing game:", error)
+          console.error("useGameDatabase.ts: Ошибка завершения игры:", error)
           setError("Failed to complete game")
           return null
         }
@@ -558,7 +590,7 @@ export const useGameDatabase = () => {
 
         return completedGame
       } catch (err) {
-        console.error("Error completing game:", err)
+        console.error("useGameDatabase.ts: Ошибка завершения игры:", err)
         setError("Failed to complete game")
         return null
       } finally {
@@ -571,10 +603,11 @@ export const useGameDatabase = () => {
   // Add game log
   const addGameLog = useCallback(
     async (gameId: string, playerId: string | null, logType: "join" | "spin" | "winner" | "info", message: string) => {
+      console.log("useGameDatabase.ts: addGameLog вызван.")
       try {
         await dbHelpers.addGameLog(gameId, playerId, logType, message)
       } catch (err) {
-        console.error("Error adding game log:", err)
+        console.error("useGameDatabase.ts: Ошибка добавления лога игры:", err)
       }
     },
     [],
@@ -582,11 +615,12 @@ export const useGameDatabase = () => {
 
   // Load game logs
   const loadGameLogs = useCallback(async (gameId: string) => {
+    console.log("useGameDatabase.ts: loadGameLogs вызван для игры:", gameId)
     try {
       const { data: logs, error } = await dbHelpers.getGameLogs(gameId)
 
       if (error) {
-        console.error("Error loading game logs:", error)
+        console.error("useGameDatabase.ts: Ошибка загрузки логов игры:", error)
         return
       }
 
@@ -599,17 +633,18 @@ export const useGameDatabase = () => {
 
       setDbGameLogs(formattedLogs)
     } catch (err) {
-      console.error("Error loading game logs:", err)
+      console.error("useGameDatabase.ts: Ошибка загрузки логов игры:", err)
     }
   }, [])
 
   // Load match history
   const loadMatchHistory = useCallback(async () => {
+    console.log("useGameDatabase.ts: loadMatchHistory вызван.")
     try {
       const { data: history, error } = await dbHelpers.getMatchHistory()
 
       if (error) {
-        console.error("Error loading match history:", error)
+        console.error("useGameDatabase.ts: Ошибка загрузки истории матчей:", error)
         return
       }
 
@@ -643,7 +678,7 @@ export const useGameDatabase = () => {
 
       setDbMatchHistory(formattedHistory)
     } catch (err) {
-      console.error("Error loading match history:", err)
+      console.error("useGameDatabase.ts: Ошибка загрузки истории матчей:", err)
     }
   }, [])
 
@@ -653,6 +688,7 @@ export const useGameDatabase = () => {
   const MAX_RETRIES = 5
 
   const withRetry = async (operation: () => Promise<any>, context: string) => {
+    console.log(`useGameDatabase.ts: withRetry вызван для ${context}.`)
     let retryCount = 0
     let delay = INITIAL_RETRY_DELAY
 
@@ -660,7 +696,7 @@ export const useGameDatabase = () => {
       try {
         return await operation()
       } catch (err) {
-        console.error(`Error in ${context} (attempt ${retryCount + 1}/${MAX_RETRIES}):`, err)
+        console.error(`useGameDatabase.ts: Ошибка в ${context} (попытка ${retryCount + 1}/${MAX_RETRIES}):`, err)
         retryCount++
 
         if (retryCount === MAX_RETRIES) {
@@ -675,12 +711,15 @@ export const useGameDatabase = () => {
 
   // Enhanced subscription setup with state management
   const setupSubscriptions = async () => {
+    console.log("useGameDatabase.ts: setupSubscriptions вызван.")
     await withRetry(async () => {
       // Clean up existing subscriptions
       if (globalSubscription) {
+        console.log("useGameDatabase.ts: Отписка от существующей глобальной подписки.")
         await supabase.removeChannel(globalSubscription)
       }
       if (gameSubscription) {
+        console.log("useGameDatabase.ts: Отписка от существующей игровой подписки.")
         await supabase.removeChannel(gameSubscription)
       }
 
@@ -688,18 +727,20 @@ export const useGameDatabase = () => {
       const newGlobalSub = supabase
         .channel("global_games")
         .on("postgres_changes", { event: "*", schema: "public", table: "games" }, async (payload) => {
-          console.log("Global game state changed:", payload)
+          console.log("useGameDatabase.ts: Глобальное состояние игры изменилось:", payload)
           await withRetry(async () => {
             const freshGames = await getFreshGames()
             if (freshGames?.length > 0) {
               const latestGame = freshGames[0]
-              console.log("Refreshing to latest game:", latestGame.id)
+              console.log("useGameDatabase.ts: Обновление до последней игры:", latestGame.id)
               setCurrentGameId(latestGame.id)
               await loadGameParticipants(latestGame.id)
             }
           }, "refresh game state")
         })
-        .subscribe()
+        .subscribe((status) => {
+          console.log("useGameDatabase.ts: Статус глобальной подписки на игру:", status)
+        })
 
       setGlobalSubscription(newGlobalSub)
 
@@ -711,7 +752,7 @@ export const useGameDatabase = () => {
 
       // Cleanup function
       return () => {
-        console.log("Cleaning up subscriptions")
+        console.log("useGameDatabase.ts: Очистка подписок")
         if (globalSubscription) {
           supabase.removeChannel(globalSubscription)
         }
@@ -729,6 +770,7 @@ export const useGameDatabase = () => {
   const CACHE_TTL = 5000 // 5 seconds
 
   const withCache = async (key: string, operation: () => Promise<any>) => {
+    console.log(`useGameDatabase.ts: withCache вызван для ключа: ${key}.`)
     const now = Date.now()
     const cached = cache.get(key)
 
@@ -746,13 +788,16 @@ export const useGameDatabase = () => {
     let mounted = true
     const initTimeout = setTimeout(() => {
       if (mounted && !error) {
+        console.error("useGameDatabase.ts: Инициализация базы данных истекла по таймауту.")
         setError("Database connection timed out. Please refresh the page.")
         setLoading(false)
+        setIsLoadingGame(false) // Устанавливаем isLoadingGame в false при таймауте
       }
     }, 15000) // 15 second timeout
 
     // Dummy Supabase initialization function (replace with real logic if needed)
     const initializeSupabase = async (): Promise<boolean> => {
+      console.log("useGameDatabase.ts: initializeSupabase (внутренний) вызван.")
       // If you have custom initialization logic, add it here.
       // For now, just check if supabase is defined.
       if (supabase) return true
@@ -763,8 +808,9 @@ export const useGameDatabase = () => {
       try {
         if (!mounted) return
 
-        console.log("🎮 Initializing PvP Wheel database...")
+        console.log("🎮 useGameDatabase.ts: Инициализация базы данных PvP Wheel...")
         setLoading(true)
+        setIsLoadingGame(true) // Устанавливаем isLoadingGame в true
 
         // Initialize Supabase first
         const initialized = await initializeSupabase()
@@ -774,32 +820,34 @@ export const useGameDatabase = () => {
 
         if (!mounted) return
 
-        console.log("✅ Database connected, loading game data...")
+        console.log("✅ useGameDatabase.ts: База данных подключена, загрузка игровых данных...")
 
         // Load initial data in parallel
         await Promise.all([
           loadAvailableGifts().catch((err) => {
-            console.error("Failed to load gifts:", err)
+            console.error("useGameDatabase.ts: Не удалось загрузить подарки:", err)
             return null
           }),
           loadMatchHistory().catch((err) => {
-            console.error("Failed to load match history:", err)
+            console.error("useGameDatabase.ts: Не удалось загрузить историю матчей:", err)
             return null
           }),
         ])
 
         if (!mounted) return
 
-        console.log("✅ Game data loaded successfully")
+        console.log("✅ useGameDatabase.ts: Игровые данные успешно загружены")
         clearTimeout(initTimeout)
         setLoading(false)
+        setIsLoadingGame(false) // Устанавливаем isLoadingGame в false
       } catch (err) {
         if (!mounted) return
 
-        console.error("❌ Error during data initialization:", err)
+        console.error("❌ useGameDatabase.ts: Ошибка во время инициализации данных:", err)
         const errorMessage = err instanceof Error ? err.message : "Unknown error"
         setError(`Failed to initialize application data: ${errorMessage}`)
         setLoading(false)
+        setIsLoadingGame(false) // Устанавливаем isLoadingGame в false при ошибке
       }
     }
 
@@ -813,6 +861,7 @@ export const useGameDatabase = () => {
 
   // Load player inventory when current player changes
   useEffect(() => {
+    console.log("useGameDatabase.ts: Эффект загрузки инвентаря игрока: currentPlayer изменился.")
     if (currentPlayer?.id) {
       loadPlayerInventory(currentPlayer.id)
     }
@@ -820,6 +869,7 @@ export const useGameDatabase = () => {
 
   // Load game logs when current game changes
   useEffect(() => {
+    console.log("useGameDatabase.ts: Эффект загрузки логов игры: currentGameId изменился.")
     if (currentGameId) {
       loadGameLogs(currentGameId)
     }
@@ -827,7 +877,7 @@ export const useGameDatabase = () => {
 
   // Real-time subscriptions and polling setup
   useEffect(() => {
-    console.log("Setting up real-time subscriptions and polling...")
+    console.log("useGameDatabase.ts: Настройка подписок в реальном времени и опроса...")
     let retryCount = 0
     const MAX_RETRIES = 5
     const RETRY_DELAY = 2000 // 2 seconds
@@ -840,7 +890,7 @@ export const useGameDatabase = () => {
         if (freshGames?.length > 0) {
           const latestGame = freshGames[0]
           if (latestGame.id !== currentGameId) {
-            console.log("Poll detected new game:", latestGame.id)
+            console.log("useGameDatabase.ts: Опрос обнаружил новую игру:", latestGame.id)
             setCurrentGameId(latestGame.id)
             await loadGameParticipants(latestGame.id)
           } else if (currentGameId) {
@@ -849,7 +899,7 @@ export const useGameDatabase = () => {
           }
         }
       } catch (err) {
-        console.error("Error in polling update:", err)
+        console.error("useGameDatabase.ts: Ошибка при обновлении опроса:", err)
       }
     }
 
@@ -866,18 +916,18 @@ export const useGameDatabase = () => {
               table: "games",
             },
             async (payload) => {
-              console.log("Global game state changed:", payload)
+              console.log("useGameDatabase.ts: Глобальное состояние игры изменилось:", payload)
               try {
                 // Force immediate refresh regardless of change type
                 const freshGames = await getFreshGames()
                 if (freshGames?.length > 0) {
                   const latestGame = freshGames[0]
-                  console.log("Refreshing to latest game:", latestGame.id)
+                  console.log("useGameDatabase.ts: Обновление до последней игры:", latestGame.id)
                   setCurrentGameId(latestGame.id)
                   await loadGameParticipants(latestGame.id)
                 }
               } catch (err) {
-                console.error("Error handling game state change:", err)
+                console.error("useGameDatabase.ts: Ошибка обработки изменения состояния игры:", err)
                 if (retryCount < MAX_RETRIES) {
                   retryCount++
                   setTimeout(setupSubscriptions, RETRY_DELAY)
@@ -886,7 +936,7 @@ export const useGameDatabase = () => {
             },
           )
           .subscribe((status) => {
-            console.log("Global game subscription status:", status)
+            console.log("useGameDatabase.ts: Статус глобальной подписки на игру:", status)
             if (status === "SUBSCRIBED") {
               retryCount = 0
               // Start polling when subscription is active
@@ -913,7 +963,7 @@ export const useGameDatabase = () => {
                 filter: `id=eq.${currentGameId}`,
               },
               async (payload) => {
-                console.log("Game state changed:", payload)
+                console.log("useGameDatabase.ts: Состояние игры изменилось:", payload)
                 // Force immediate refresh of game state
                 const freshGames = await getFreshGames()
                 const currentGame = freshGames.find((g) => g.id === currentGameId)
@@ -923,7 +973,11 @@ export const useGameDatabase = () => {
                   // Check for countdown updates
                   const { timeLeft } = await dbHelpers.getGameCountdown(currentGame.id)
                   if (timeLeft !== null) {
-                    console.log("Real-time countdown update:", timeLeft, "seconds remaining")
+                    console.log(
+                      "useGameDatabase.ts: Обновление обратного отсчета в реальном времени:",
+                      timeLeft,
+                      "секунд осталось",
+                    )
                     setGameCountdown(timeLeft)
                   }
                 }
@@ -955,7 +1009,7 @@ export const useGameDatabase = () => {
               },
             )
             .subscribe((status) => {
-              console.log("Game-specific subscription status:", status)
+              console.log("useGameDatabase.ts: Статус подписки на конкретную игру:", status)
               if (status === "CHANNEL_ERROR") {
                 // Attempt immediate reconnection
                 gameSubscription?.unsubscribe()
@@ -965,7 +1019,7 @@ export const useGameDatabase = () => {
         }
 
         return () => {
-          console.log("Cleaning up real-time subscriptions and polling")
+          console.log("useGameDatabase.ts: Очистка подписок в реальном времени и опроса")
           if (pollInterval) {
             clearInterval(pollInterval)
           }
@@ -975,7 +1029,7 @@ export const useGameDatabase = () => {
           }
         }
       } catch (err) {
-        console.error("Error in subscription setup:", err)
+        console.error("useGameDatabase.ts: Ошибка в настройке подписки:", err)
         if (retryCount < MAX_RETRIES) {
           retryCount++
           setTimeout(setupSubscriptions, RETRY_DELAY * retryCount)
@@ -989,51 +1043,59 @@ export const useGameDatabase = () => {
 
   // Countdown management
   const startGameCountdown = useCallback(async (gameId: string) => {
+    console.log("useGameDatabase.ts: startGameCountdown вызван для игры:", gameId)
     try {
-      console.log("Starting countdown for game:", gameId)
+      console.log("useGameDatabase.ts: Запуск обратного отсчета для игры:", gameId)
       const { data, error } = await dbHelpers.startGameCountdown(gameId, 60)
 
       if (error) {
-        console.error("Error starting countdown:", error)
+        console.error("useGameDatabase.ts: Ошибка запуска обратного отсчета:", error)
         return false
       }
 
-      console.log("Countdown started successfully")
+      console.log("useGameDatabase.ts: Обратный отсчет успешно запущен")
       return true
     } catch (err) {
-      console.error("Error starting countdown:", err)
+      console.error("useGameDatabase.ts: Ошибка запуска обратного отсчета:", err)
       return false
     }
   }, [])
 
   const getGameCountdown = useCallback(async (gameId: string) => {
+    console.log("useGameDatabase.ts: getGameCountdown вызван для игры:", gameId)
     try {
       const { timeLeft, error } = await dbHelpers.getGameCountdown(gameId)
 
       if (error) {
-        console.error("Error getting countdown:", error)
+        console.error("useGameDatabase.ts: Ошибка получения обратного отсчета:", error)
         return null
       }
 
       setGameCountdown(timeLeft)
       return timeLeft
     } catch (err) {
-      console.error("Error getting countdown:", err)
+      console.error("useGameDatabase.ts: Ошибка получения обратного отсчета:", err)
       return null
     }
   }, [])
 
   // Auto-start countdown when game reaches 2 players
   useEffect(() => {
+    console.log(
+      "useGameDatabase.ts: Эффект автозапуска обратного отсчета: currentGameId",
+      currentGameId,
+      "dbPlayers.length",
+      dbPlayers.length,
+    )
     if (currentGameId && dbPlayers.length === 2) {
       // Check if countdown is already running
       const checkAndStartCountdown = async () => {
         const { timeLeft } = await dbHelpers.getGameCountdown(currentGameId)
         if (timeLeft === null || timeLeft <= 0) {
-          console.log("Game has 2 players, starting countdown...")
+          console.log("useGameDatabase.ts: В игре 2 игрока, запуск обратного отсчета...")
           startGameCountdown(currentGameId)
         } else {
-          console.log("Game has 2 players, countdown already running:", timeLeft, "seconds remaining")
+          console.log("useGameDatabase.ts: В игре 2 игрока, обратный отсчет уже запущен:", timeLeft, "секунд осталось")
           setGameCountdown(timeLeft)
         }
       }
@@ -1044,11 +1106,21 @@ export const useGameDatabase = () => {
 
   // Initialize countdown on component mount if game already has countdown
   useEffect(() => {
+    console.log(
+      "useGameDatabase.ts: Эффект инициализации обратного отсчета при монтировании: currentGameId",
+      currentGameId,
+      "gameCountdown",
+      gameCountdown,
+    )
     if (currentGameId && gameCountdown === null) {
       const initializeCountdown = async () => {
         const { timeLeft } = await dbHelpers.getGameCountdown(currentGameId)
         if (timeLeft !== null && timeLeft > 0) {
-          console.log("Initializing countdown on mount:", timeLeft, "seconds remaining")
+          console.log(
+            "useGameDatabase.ts: Инициализация обратного отсчета при монтировании:",
+            timeLeft,
+            "секунд осталось",
+          )
           setGameCountdown(timeLeft)
         }
       }
@@ -1059,6 +1131,7 @@ export const useGameDatabase = () => {
 
   // Countdown timer effect
   useEffect(() => {
+    console.log("useGameDatabase.ts: Эффект таймера обратного отсчета: currentGameId", currentGameId)
     let interval: NodeJS.Timeout | null = null
 
     if (currentGameId) {
@@ -1068,7 +1141,7 @@ export const useGameDatabase = () => {
         if (timeLeft !== null) {
           setGameCountdown(timeLeft)
           if (timeLeft <= 0) {
-            console.log("Countdown reached zero, should trigger spin")
+            console.log("useGameDatabase.ts: Обратный отсчет достиг нуля, должен сработать спин")
           }
         }
       }
@@ -1082,7 +1155,7 @@ export const useGameDatabase = () => {
         if (timeLeft !== null) {
           setGameCountdown(timeLeft)
           if (timeLeft <= 0) {
-            console.log("Countdown reached zero, should trigger spin")
+            console.log("useGameDatabase.ts: Обратный отсчет достиг нуля, должен сработать спин")
             // Stop the interval once countdown reaches 0
             if (interval) {
               clearInterval(interval)
@@ -1105,6 +1178,7 @@ export const useGameDatabase = () => {
 
   const createGame = useCallback(
     async (player1Id: string) => {
+      console.log("useGameDatabase.ts: createGame вызван с player1Id:", player1Id)
       try {
         const { data, error } = await supabase
           .from("games")
@@ -1116,10 +1190,10 @@ export const useGameDatabase = () => {
           throw error
         }
         setCurrentGame(data)
-        console.log("Game created:", data)
+        console.log("useGameDatabase.ts: Игра создана:", data)
         return data
       } catch (error) {
-        console.error("Error creating game:", error)
+        console.error("useGameDatabase.ts: Ошибка создания игры:", error)
         setErrorGame(error as Error)
         return null
       }
@@ -1129,6 +1203,7 @@ export const useGameDatabase = () => {
 
   const joinGame = useCallback(
     async (gameId: string, player2Id: string) => {
+      console.log("useGameDatabase.ts: joinGame вызван с gameId:", gameId, "player2Id:", player2Id)
       try {
         const { data, error } = await supabase
           .from("games")
@@ -1141,10 +1216,10 @@ export const useGameDatabase = () => {
           throw error
         }
         setCurrentGame(data)
-        console.log("Game joined:", data)
+        console.log("useGameDatabase.ts: Игра присоединена:", data)
         return data
       } catch (error) {
-        console.error("Error joining game:", error)
+        console.error("useGameDatabase.ts: Ошибка присоединения к игре:", error)
         setErrorGame(error as Error)
         return null
       }
@@ -1154,6 +1229,7 @@ export const useGameDatabase = () => {
 
   const updateGameStatus = useCallback(
     async (gameId: string, status: Game["status"]) => {
+      console.log("useGameDatabase.ts: updateGameStatus вызван с gameId:", gameId, "status:", status)
       try {
         const { data, error } = await supabase.from("games").update({ status }).eq("id", gameId).select().single()
 
@@ -1161,10 +1237,10 @@ export const useGameDatabase = () => {
           throw error
         }
         setCurrentGame(data)
-        console.log("Game status updated:", data)
+        console.log("useGameDatabase.ts: Статус игры обновлен:", data)
         return data
       } catch (error) {
-        console.error("Error updating game status:", error)
+        console.error("useGameDatabase.ts: Ошибка обновления статуса игры:", error)
         setErrorGame(error as Error)
         return null
       }
@@ -1174,6 +1250,16 @@ export const useGameDatabase = () => {
 
   const updateGameRollAndWinner = useCallback(
     async (gameId: string, rollNumber: number, winnerId: string, status: Game["status"]) => {
+      console.log(
+        "useGameDatabase.ts: updateGameRollAndWinner вызван с gameId:",
+        gameId,
+        "rollNumber:",
+        rollNumber,
+        "winnerId:",
+        winnerId,
+        "status:",
+        status,
+      )
       try {
         const { data, error } = await supabase
           .from("games")
@@ -1186,10 +1272,10 @@ export const useGameDatabase = () => {
           throw error
         }
         setCurrentGame(data)
-        console.log("Game roll and winner updated:", data)
+        console.log("useGameDatabase.ts: Ролл игры и победитель обновлены:", data)
         return data
       } catch (error) {
-        console.error("Error updating game roll and winner:", error)
+        console.error("useGameDatabase.ts: Ошибка обновления ролла игры и победителя:", error)
         setErrorGame(error as Error)
         return null
       }
@@ -1199,6 +1285,7 @@ export const useGameDatabase = () => {
 
   const subscribeToGameChanges = useCallback(
     (callback: (payload: any) => void) => {
+      console.log("useGameDatabase.ts: subscribeToGameChanges вызван.")
       const channel = supabase
         .channel("game_changes")
         .on("postgres_changes", { event: "*", schema: "public", table: "games" }, callback)
@@ -1210,6 +1297,7 @@ export const useGameDatabase = () => {
   )
 
   const fetchGifts = useCallback(async () => {
+    console.log("useGameDatabase.ts: fetchGifts вызван.")
     try {
       const { data, error } = await supabase.from("gifts").select("*").order("value", { ascending: true })
 
@@ -1218,7 +1306,7 @@ export const useGameDatabase = () => {
       }
       return data as Gift[]
     } catch (error) {
-      console.error("Error fetching gifts:", error)
+      console.error("useGameDatabase.ts: Ошибка получения подарков:", error)
       setErrorGame(error as Error)
       return null
     }
