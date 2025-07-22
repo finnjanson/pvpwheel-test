@@ -263,20 +263,20 @@ export const useGameDatabase = () => {
       const { data: games, error } = await supabase
         .from("games")
         .select(`
-        *,
-        game_participants (
+      *,
+      game_participants (
+        id,
+        player_id,
+        balance,
+        color,
+        position_index,
+        players (
           id,
-          player_id,
-          balance,
-          color,
-          position_index,
-          players (
-            id,
-            username,
-            first_name
-          )
+          username,
+          first_name
         )
-      `)
+      )
+    `)
         .in("status", ["waiting", "active"])
         .order("created_at", { ascending: false })
 
@@ -495,24 +495,24 @@ export const useGameDatabase = () => {
       const { data: participants, error } = await supabase
         .from("game_participants")
         .select(`
-         *,
-         players (
-           id,
-           username,
-           first_name,
-           last_name,
-           photo_url,
-           is_premium
-         ),
-         game_participant_gifts (
-           quantity,
-           gifts (
-             emoji,
-             name,
-             base_value
-           )
+       *,
+       players (
+         id,
+         username,
+         first_name,
+         last_name,
+         photo_url,
+         is_premium
+       ),
+       game_participant_gifts (
+         quantity,
+         gifts (
+           emoji,
+           name,
+           base_value
          )
-       `)
+       )
+     `)
         .eq("game_id", gameId)
         .order("position_index")
 
