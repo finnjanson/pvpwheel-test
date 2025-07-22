@@ -1,8 +1,35 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { createClientComponentClient } from "@supabase/supabase-auth-helpers/nextjs"
+import type { Database } from "@/lib/supabase" // Assuming you have a types file for Supabase
 import type { RealtimeChannel } from "@supabase/supabase-js"
-import { supabase, dbHelpers } from "../lib/supabase"
+import { dbHelpers } from "../lib/supabase"
+
+// Define types for Game and Gift
+interface Game {
+  id: string
+  created_at: string
+  roll_number: number | null
+  status: "idle" | "waiting" | "active" | "completed"
+  player1_id: string | null
+  player2_id: string | null
+  winner_id: string | null
+  start_time: string | null
+  end_time: string | null
+  bet_amount: number | null
+  nft_deposit_id: string | null
+  nft_deposit_amount: number | null
+}
+
+interface Gift {
+  id: string
+  name: string
+  description: string
+  image_url: string
+  value: number
+  created_at: string
+}
 
 interface TelegramUser {
   id: number
@@ -41,13 +68,6 @@ interface MatchHistoryEntry {
   winnerChance: number
 }
 
-interface Game {
-  id: string
-  status: string
-  created_at: string
-  winner_id?: string | null
-}
-
 interface GameParticipant {
   id: string
   game_id: string
@@ -62,6 +82,7 @@ interface ConnectionTestResult {
 }
 
 export const useGameDatabase = () => {
+  const supabase = createClientComponentClient<Database>()
   const [currentGameId, setCurrentGameId] = useState<string | null>(null)
   const [dbPlayers, setDbPlayers] = useState<any[]>([])
   const [dbGameLogs, setDbGameLogs] = useState<GameLog[]>([])
@@ -72,6 +93,9 @@ export const useGameDatabase = () => {
   const [gameCountdown, setGameCountdown] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [currentGame, setCurrentGame] = useState<Game | null>(null)
+  const [isLoadingGame, setIsLoadingGame] = useState(true)
+  const [errorGame, setErrorGame] = useState<Error | null>(null)
 
   // State for managing subscriptions
   const [globalSubscription, setGlobalSubscription] = useState<RealtimeChannel | null>(null)
@@ -186,7 +210,7 @@ export const useGameDatabase = () => {
       const { data: games, error } = await supabase
         .from("games")
         .select("*")
-        .eq("status", "waiting")
+        .in("status", ["waiting", "active"])
         .order("created_at", { ascending: false })
         .limit(1)
 
@@ -228,21 +252,21 @@ export const useGameDatabase = () => {
       const { data: games, error } = await supabase
         .from("games")
         .select(`
-          *,
-          game_participants (
+        *,
+        game_participants (
+          id,
+          player_id,
+          balance,
+          color,
+          position_index,
+          players (
             id,
-            player_id,
-            balance,
-            color,
-            position_index,
-            players (
-              id,
-              username,
-              first_name
-            )
+            username,
+            first_name
           )
-        `)
-        .eq("status", "waiting")
+        )
+      `)
+        .in("status", ["waiting", "active"])
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -440,24 +464,24 @@ export const useGameDatabase = () => {
       const { data: participants, error } = await supabase
         .from("game_participants")
         .select(`
-          *,
-          players (
-            id,
-            username,
-            first_name,
-            last_name,
-            photo_url,
-            is_premium
-          ),
-          game_participant_gifts (
-            quantity,
-            gifts (
-              emoji,
-              name,
-              base_value
-            )
+        *,
+        players (
+          id,
+          username,
+          first_name,
+          last_name,
+          photo_url,
+          is_premium
+        ),
+        game_participant_gifts (
+          quantity,
+          gifts (
+            emoji,
+            name,
+            base_value
           )
-        `)
+        )
+      `)
         .eq("game_id", gameId)
         .order("position_index")
 
@@ -871,7 +895,7 @@ export const useGameDatabase = () => {
               }
             } else if (status === "CHANNEL_ERROR" && retryCount < MAX_RETRIES) {
               retryCount++
-              setTimeout(setupSubscriptions, RETRY_DELAY)
+              setTimeout(setupSubscriptions, RETRY_DELAY * retryCount)
             }
           })
 
@@ -1079,6 +1103,127 @@ export const useGameDatabase = () => {
     }
   }, [currentGameId, getGameCountdown])
 
+  const createGame = useCallback(
+    async (player1Id: string) => {
+      try {
+        const { data, error } = await supabase
+          .from("games")
+          .insert({ player1_id: player1Id, status: "waiting", created_at: new Date().toISOString() })
+          .select()
+          .single()
+
+        if (error) {
+          throw error
+        }
+        setCurrentGame(data)
+        console.log("Game created:", data)
+        return data
+      } catch (error) {
+        console.error("Error creating game:", error)
+        setErrorGame(error as Error)
+        return null
+      }
+    },
+    [supabase],
+  )
+
+  const joinGame = useCallback(
+    async (gameId: string, player2Id: string) => {
+      try {
+        const { data, error } = await supabase
+          .from("games")
+          .update({ player2_id: player2Id, status: "active" })
+          .eq("id", gameId)
+          .select()
+          .single()
+
+        if (error) {
+          throw error
+        }
+        setCurrentGame(data)
+        console.log("Game joined:", data)
+        return data
+      } catch (error) {
+        console.error("Error joining game:", error)
+        setErrorGame(error as Error)
+        return null
+      }
+    },
+    [supabase],
+  )
+
+  const updateGameStatus = useCallback(
+    async (gameId: string, status: Game["status"]) => {
+      try {
+        const { data, error } = await supabase.from("games").update({ status }).eq("id", gameId).select().single()
+
+        if (error) {
+          throw error
+        }
+        setCurrentGame(data)
+        console.log("Game status updated:", data)
+        return data
+      } catch (error) {
+        console.error("Error updating game status:", error)
+        setErrorGame(error as Error)
+        return null
+      }
+    },
+    [supabase],
+  )
+
+  const updateGameRollAndWinner = useCallback(
+    async (gameId: string, rollNumber: number, winnerId: string, status: Game["status"]) => {
+      try {
+        const { data, error } = await supabase
+          .from("games")
+          .update({ roll_number: rollNumber, winner_id: winnerId, status, end_time: new Date().toISOString() })
+          .eq("id", gameId)
+          .select()
+          .single()
+
+        if (error) {
+          throw error
+        }
+        setCurrentGame(data)
+        console.log("Game roll and winner updated:", data)
+        return data
+      } catch (error) {
+        console.error("Error updating game roll and winner:", error)
+        setErrorGame(error as Error)
+        return null
+      }
+    },
+    [supabase],
+  )
+
+  const subscribeToGameChanges = useCallback(
+    (callback: (payload: any) => void) => {
+      const channel = supabase
+        .channel("game_changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "games" }, callback)
+        .subscribe()
+
+      return channel
+    },
+    [supabase],
+  )
+
+  const fetchGifts = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from("gifts").select("*").order("value", { ascending: true })
+
+      if (error) {
+        throw error
+      }
+      return data as Gift[]
+    } catch (error) {
+      console.error("Error fetching gifts:", error)
+      setErrorGame(error as Error)
+      return null
+    }
+  }, [supabase])
+
   return {
     // State
     currentGameId,
@@ -1091,6 +1236,9 @@ export const useGameDatabase = () => {
     gameCountdown,
     loading,
     error,
+    currentGame,
+    isLoadingGame,
+    errorGame,
 
     // Actions
     initializePlayer,
@@ -1105,10 +1253,14 @@ export const useGameDatabase = () => {
     loadGameParticipants,
     startGameCountdown,
     getGameCountdown,
+    createGame,
+    joinGame,
+    updateGameStatus,
+    updateGameRollAndWinner,
+    subscribeToGameChanges,
+    fetchGifts,
 
     // Utilities
     clearError: () => setError(null),
   }
 }
-
-export default useGameDatabase

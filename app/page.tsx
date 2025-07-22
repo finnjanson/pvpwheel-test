@@ -1,7 +1,7 @@
 "use client"
 
-import RootLayout from "../src/app/layout"
+import eslintConfig from "../eslint.config"
 
 export default function SyntheticV0PageForDeployment() {
-  return <RootLayout />
+  return <eslintConfig />
 }

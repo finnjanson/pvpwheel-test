@@ -13,6 +13,34 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey)
 
 async function testGiftsLoading() {
+  console.log("--- Starting Gifts Loading Test ---")
+  console.log("**Objective**: Verify that gifts are correctly fetched from the database and displayed in the UI.")
+  console.log("**Pre-requisites**:")
+  console.log("  - Application is deployed and accessible.")
+  console.log("  - Supabase database is set up with a `gifts` table and some initial gift data.")
+  console.log("**Test Steps**:")
+  console.log("1. **Navigate to Gift Selection**")
+  console.log("   - Open the application URL.")
+  console.log('   - Click on the "Gifts" icon or navigate to the gift selection section (e.g., via bottom navigation).')
+  console.log("2. **Observe Gift Loading**")
+  console.log(
+    "   - **Expected**: A loading indicator might appear briefly, then the gift selection popup/screen should display a list of gifts.",
+  )
+  console.log("   - **Observe**: Are there any errors in the browser console related to fetching gifts?")
+  console.log(
+    "   - **Observe**: Do the displayed gifts match the data in your Supabase `gifts` table (name, description, value, image)?",
+  )
+  console.log("3. **Verify Gift Details**")
+  console.log("   - Click on a few different gifts (if interactive).")
+  console.log("   - **Expected**: Details for the selected gift should be displayed correctly.")
+  console.log("4. **Test Empty Gift List (Optional)**")
+  console.log("   - (Advanced) Temporarily remove all gifts from your Supabase `gifts` table.")
+  console.log("   - Reload the application and navigate to the gift section.")
+  console.log(
+    '   - **Expected**: A message indicating "No gifts available" or similar should be displayed, or the section should be empty without errors.',
+  )
+  console.log("   - **Observe**: Are there any errors in the console when no gifts are present?")
+
   console.log("🎁 Testing gifts loading in game participants...")
 
   try {
@@ -203,3 +231,8 @@ testGiftsLoading()
     console.error("💥 Test failed:", error)
     process.exit(1)
   })
+
+console.log("--- Gifts Loading Test Complete ---")
+console.log(
+  "If gifts are not loading, check your Supabase `gifts` table, `useGameDatabase` hook, and the `WheelGame.tsx` component's gift fetching logic.",
+)

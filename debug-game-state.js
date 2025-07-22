@@ -1,180 +1,73 @@
-const { createClient } = require("@supabase/supabase-js")
-require("dotenv").config({ path: ".env.local" })
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("❌ Missing Supabase environment variables")
-  process.exit(1)
-}
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { createClient } from "@supabase/supabase-js"
 
 async function debugGameState() {
-  console.log("🔍 Debugging game state and visibility...\n")
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.")
+    return
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+  console.log("--- Debugging Game State ---")
 
   try {
-    // 1. Check all games
-    console.log("1. Checking all games...")
+    // Fetch all games
+    console.log("\nFetching all games...")
     const { data: allGames, error: allGamesError } = await supabase
       .from("games")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(5)
 
-    if (allGamesError) {
-      console.error("❌ Error fetching games:", allGamesError)
-      return
-    }
-
-    console.log(`Found ${allGames?.length || 0} recent games:`)
-    allGames?.forEach((game, index) => {
-      console.log(
-        `   ${index + 1}. Game ${game.id.slice(0, 8)}... (Roll: ${game.roll_number}, Status: ${game.status}, Created: ${new Date(game.created_at).toLocaleString()})`,
-      )
+    if (allGamesError) throw allGamesError
+    console.log(`Found ${allGames.length} games:`)
+    allGames.forEach((game) => {
+      console.log(`  ID: ${game.id}, Status: ${game.status}, Roll: ${game.roll_number}, Created: ${game.created_at}`)
     })
 
-    // 2. Check waiting games specifically
-    console.log("\n2. Checking waiting games...")
-    const { data: waitingGames, error: waitingError } = await supabase
+    // Fetch current waiting game
+    console.log("\nFetching current waiting game...")
+    const { data: waitingGames, error: waitingGamesError } = await supabase
       .from("games")
-      .select(`
-        *,
-        game_participants (
-          *,
-          players (username, first_name)
-        )
-      `)
-      .eq("status", "waiting")
-      .order("created_at", { ascending: false })
-
-    if (waitingError) {
-      console.error("❌ Error fetching waiting games:", waitingError)
-      return
-    }
-
-    if (waitingGames && waitingGames.length > 0) {
-      console.log(`✅ Found ${waitingGames.length} waiting game(s):`)
-      waitingGames.forEach((game, index) => {
-        console.log(`\n   Game ${index + 1}:`)
-        console.log(`   - ID: ${game.id}`)
-        console.log(`   - Roll Number: ${game.roll_number}`)
-        console.log(`   - Created: ${new Date(game.created_at).toLocaleString()}`)
-        console.log(`   - Participants: ${game.game_participants?.length || 0}`)
-
-        if (game.game_participants && game.game_participants.length > 0) {
-          console.log("   - Players:")
-          game.game_participants.forEach((participant, pIndex) => {
-            const playerName = participant.players?.username || participant.players?.first_name || "Unknown"
-            console.log(
-              `     ${pIndex + 1}. ${playerName} (Balance: ${participant.balance || 0}, Color: ${participant.color})`,
-            )
-          })
-        }
-      })
-
-      // Check if there are multiple waiting games (this is a problem)
-      if (waitingGames.length > 1) {
-        console.log(`\n⚠️  WARNING: Found ${waitingGames.length} waiting games. There should only be 1.`)
-        console.log("   This can cause users to join different games.")
-        console.log("   Run the cleanup script to fix this.")
-      }
-    } else {
-      console.log("ℹ️  No waiting games found")
-    }
-
-    // 3. Check recent players
-    console.log("\n3. Checking recent players...")
-    const { data: recentPlayers, error: playersError } = await supabase
-      .from("players")
       .select("*")
+      .eq("status", "waiting")
+      .limit(1)
+
+    if (waitingGamesError) throw waitingGamesError
+    if (waitingGames.length > 0) {
+      const game = waitingGames[0]
+      console.log(
+        `  Current Waiting Game: ID: ${game.id}, Status: ${game.status}, Roll: ${game.roll_number}, Created: ${game.created_at}`,
+      )
+    } else {
+      console.log('  No game currently in "waiting" status.')
+    }
+
+    // Fetch recent completed games
+    console.log("\nFetching recent completed games...")
+    const { data: completedGames, error: completedGamesError } = await supabase
+      .from("games")
+      .select("*")
+      .eq("status", "completed")
       .order("created_at", { ascending: false })
       .limit(5)
 
-    if (playersError) {
-      console.error("❌ Error fetching players:", playersError)
+    if (completedGamesError) throw completedGamesError
+    if (completedGames.length > 0) {
+      console.log(`Found ${completedGames.length} recent completed games:`)
+      completedGames.forEach((game) => {
+        console.log(`  ID: ${game.id}, Status: ${game.status}, Roll: ${game.roll_number}, Created: ${game.created_at}`)
+      })
     } else {
-      console.log(`Found ${recentPlayers?.length || 0} recent players:`)
-      recentPlayers?.forEach((player, index) => {
-        console.log(
-          `   ${index + 1}. ${player.username || player.first_name || "Unknown"} (ID: ${player.id.slice(0, 8)}..., Games: ${player.total_games_played})`,
-        )
-      })
+      console.log("  No recent completed games found.")
     }
-
-    // 4. Check for real-time capability
-    console.log("\n4. Testing real-time capability...")
-    const channel = supabase
-      .channel("debug_test")
-      .on("postgres_changes", { event: "*", schema: "public", table: "games" }, (payload) => {
-        console.log("📡 Real-time test received:", payload.eventType)
-      })
-      .subscribe((status) => {
-        console.log(`📡 Real-time subscription: ${status}`)
-      })
-
-    // Wait a moment then cleanup
-    setTimeout(() => {
-      supabase.removeChannel(channel)
-      console.log("\n✅ Debug complete! Check the output above for issues.")
-      process.exit(0)
-    }, 2000)
   } catch (error) {
-    console.error("❌ Debug failed:", error)
-    process.exit(1)
+    console.error("Error debugging game state:", error.message)
   }
+
+  console.log("--- Game State Debugging Complete ---")
 }
 
-// Also provide cleanup function
-async function cleanupMultipleGames() {
-  console.log("🧹 Cleaning up multiple waiting games...\n")
-
-  try {
-    // Get all waiting games
-    const { data: waitingGames, error: fetchError } = await supabase
-      .from("games")
-      .select("*")
-      .eq("status", "waiting")
-      .order("created_at", { ascending: false })
-
-    if (fetchError) {
-      console.error("❌ Error fetching waiting games:", fetchError)
-      return
-    }
-
-    if (!waitingGames || waitingGames.length <= 1) {
-      console.log("✅ No cleanup needed - found 0 or 1 waiting games")
-      return
-    }
-
-    // Keep the most recent game, cancel the rest
-    const keepGame = waitingGames[0]
-    const cancelGames = waitingGames.slice(1)
-
-    console.log(`Keeping game: ${keepGame.id} (Roll: ${keepGame.roll_number})`)
-    console.log(`Cancelling ${cancelGames.length} older games...`)
-
-    for (const game of cancelGames) {
-      const { error: updateError } = await supabase.from("games").update({ status: "cancelled" }).eq("id", game.id)
-
-      if (updateError) {
-        console.error(`❌ Error cancelling game ${game.id}:`, updateError)
-      } else {
-        console.log(`✅ Cancelled game ${game.id.slice(0, 8)}... (Roll: ${game.roll_number})`)
-      }
-    }
-
-    console.log("\n✅ Cleanup complete!")
-  } catch (error) {
-    console.error("❌ Cleanup failed:", error)
-  }
-}
-
-// Run based on command line argument
-const command = process.argv[2]
-if (command === "cleanup") {
-  cleanupMultipleGames()
-} else {
-  debugGameState()
-}
+debugGameState()

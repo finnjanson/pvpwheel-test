@@ -11,13 +11,100 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing Supabase environment variables")
 }
 
+// Define your database schema types here
+// This is a simplified example, you should generate this from your Supabase project
+// using `supabase gen types typescript --local > src/lib/database.types.ts`
+export type Database = {
+  public: {
+    Tables: {
+      games: {
+        Row: {
+          id: string
+          created_at: string
+          roll_number: number | null
+          status: "idle" | "waiting" | "active" | "completed"
+          player1_id: string | null
+          player2_id: string | null
+          winner_id: string | null
+          start_time: string | null
+          end_time: string | null
+          bet_amount: number | null
+          nft_deposit_id: string | null
+          nft_deposit_amount: number | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          roll_number?: number | null
+          status?: "idle" | "waiting" | "active" | "completed"
+          player1_id?: string | null
+          player2_id?: string | null
+          winner_id?: string | null
+          start_time?: string | null
+          end_time?: string | null
+          bet_amount?: number | null
+          nft_deposit_id?: string | null
+          nft_deposit_amount?: number | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          roll_number?: number | null
+          status?: "idle" | "waiting" | "active" | "completed"
+          player1_id?: string | null
+          player2_id?: string | null
+          winner_id?: string | null
+          start_time?: string | null
+          end_time?: string | null
+          bet_amount?: number | null
+          nft_deposit_id?: string | null
+          nft_deposit_amount?: number | null
+        }
+      }
+      gifts: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          image_url: string | null
+          value: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          image_url?: string | null
+          value: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          image_url?: string | null
+          value?: number
+          created_at?: string
+        }
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
 // Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
 
 // Initialize Supabase connection with retry logic
 export const initializeSupabase = async () => {
@@ -50,254 +137,13 @@ export const initializeSupabase = async () => {
   return false
 }
 
-// Database types
-export interface Database {
-  public: {
-    Tables: {
-      players: {
-        Row: {
-          id: string
-          telegram_id: number
-          username: string
-          first_name: string | null
-          last_name: string | null
-          photo_url: string | null
-          is_premium: boolean
-          language_code: string | null
-          total_games_played: number
-          total_games_won: number
-          total_ton_won: number
-          total_gifts_won: number
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          telegram_id: number
-          username: string
-          first_name?: string | null
-          last_name?: string | null
-          photo_url?: string | null
-          is_premium?: boolean
-          language_code?: string | null
-          total_games_played?: number
-          total_games_won?: number
-          total_ton_won?: number
-          total_gifts_won?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          telegram_id?: number
-          username?: string
-          first_name?: string | null
-          last_name?: string | null
-          photo_url?: string | null
-          is_premium?: boolean
-          language_code?: string | null
-          total_games_played?: number
-          total_games_won?: number
-          total_ton_won?: number
-          total_gifts_won?: number
-          created_at?: string
-          updated_at?: string
-        }
-      }
-      games: {
-        Row: {
-          id: string
-          roll_number: number
-          status: "waiting" | "spinning" | "completed" | "cancelled"
-          total_players: number
-          total_pot_balance: number
-          total_gift_value: number
-          winner_id: string | null
-          winner_chance: number | null
-          spin_timestamp: string | null
-          created_at: string
-          completed_at: string | null
-        }
-        Insert: {
-          id?: string
-          roll_number: number
-          status?: "waiting" | "spinning" | "completed" | "cancelled"
-          total_players?: number
-          total_pot_balance?: number
-          total_gift_value?: number
-          winner_id?: string | null
-          winner_chance?: number | null
-          spin_timestamp?: string | null
-          created_at?: string
-          completed_at?: string | null
-        }
-        Update: {
-          id?: string
-          roll_number?: number
-          status?: "waiting" | "spinning" | "completed" | "cancelled"
-          total_players?: number
-          total_pot_balance?: number
-          total_gift_value?: number
-          winner_id?: string | null
-          winner_chance?: number | null
-          spin_timestamp?: string | null
-          created_at?: string
-          completed_at?: string | null
-        }
-      }
-      game_participants: {
-        Row: {
-          id: string
-          game_id: string
-          player_id: string
-          balance: number
-          gift_value: number
-          color: string
-          position_index: number
-          chance_percentage: number | null
-          joined_at: string
-        }
-        Insert: {
-          id?: string
-          game_id: string
-          player_id: string
-          balance?: number
-          gift_value?: number
-          color: string
-          position_index: number
-          chance_percentage?: number | null
-          joined_at?: string
-        }
-        Update: {
-          id?: string
-          game_id?: string
-          player_id?: string
-          balance?: number
-          gift_value?: number
-          color?: string
-          position_index?: number
-          chance_percentage?: number | null
-          joined_at?: string
-        }
-      }
-      gifts: {
-        Row: {
-          id: string
-          emoji: string
-          name: string
-          base_value: number
-          rarity: "common" | "rare" | "epic" | "legendary"
-          is_active: boolean
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          emoji: string
-          name: string
-          base_value: number
-          rarity: "common" | "rare" | "epic" | "legendary"
-          is_active?: boolean
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          emoji?: string
-          name?: string
-          base_value?: number
-          rarity?: "common" | "rare" | "epic" | "legendary"
-          is_active?: boolean
-          created_at?: string
-        }
-      }
-      player_gifts: {
-        Row: {
-          id: string
-          player_id: string
-          gift_id: string
-          quantity: number
-          total_value: number
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          player_id: string
-          gift_id: string
-          quantity?: number
-          total_value?: number
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          player_id?: string
-          gift_id?: string
-          quantity?: number
-          total_value?: number
-          updated_at?: string
-        }
-      }
-      game_participant_gifts: {
-        Row: {
-          id: string
-          game_participant_id: string
-          gift_id: string
-          quantity: number
-          value_per_gift: number
-          total_value: number
-        }
-        Insert: {
-          id?: string
-          game_participant_id: string
-          gift_id: string
-          quantity?: number
-          value_per_gift: number
-          total_value: number
-        }
-        Update: {
-          id?: string
-          game_participant_id?: string
-          gift_id?: string
-          quantity?: number
-          value_per_gift?: number
-          total_value?: number
-        }
-      }
-      game_logs: {
-        Row: {
-          id: string
-          game_id: string
-          player_id: string | null
-          log_type: "join" | "spin" | "winner" | "info"
-          message: string
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          game_id: string
-          player_id?: string | null
-          log_type: "join" | "spin" | "winner" | "info"
-          message: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          game_id?: string
-          player_id?: string | null
-          log_type?: "join" | "spin" | "winner" | "info"
-          message?: string
-          created_at?: string
-        }
-      }
-    }
-  }
-}
-
 // Helper functions for database operations
 export const dbHelpers = {
   // Test database connection
   async testConnection() {
     try {
       console.log("Testing database connection...")
-      const { data, error } = await supabase.from("players").select("count").limit(1)
+      const { data, error } = await supabase.from("games").select("count").limit(1)
 
       if (error) {
         console.error("Database connection test failed:", error)
@@ -312,82 +158,11 @@ export const dbHelpers = {
     }
   },
 
-  // Players
-  async getOrCreatePlayer(telegramUser: any) {
-    try {
-      console.log("Searching for existing player with telegram_id:", telegramUser.id)
-
-      const { data: existingPlayer, error: fetchError } = await supabase
-        .from("players")
-        .select("*")
-        .eq("telegram_id", telegramUser.id)
-        .single()
-
-      if (fetchError) {
-        console.log("Fetch error (expected if player not found):", fetchError.message)
-
-        // If player not found, create new one
-        if (fetchError.code === "PGRST116") {
-          console.log("Player not found, creating new player...")
-
-          const newPlayerData = {
-            telegram_id: telegramUser.id,
-            username: telegramUser.username || telegramUser.first_name || `User${telegramUser.id}`,
-            first_name: telegramUser.first_name || null,
-            last_name: telegramUser.last_name || null,
-            photo_url: telegramUser.photo_url || null,
-            is_premium: telegramUser.is_premium || false,
-            language_code: telegramUser.language_code || null,
-          }
-
-          console.log("Creating player with data:", newPlayerData)
-
-          const { data: newPlayer, error: createError } = await supabase
-            .from("players")
-            .insert(newPlayerData)
-            .select()
-            .single()
-
-          if (createError) {
-            console.error("Error creating new player:", createError)
-            return { data: null, error: createError }
-          }
-
-          console.log("New player created successfully:", newPlayer)
-          return { data: newPlayer, error: null }
-        }
-
-        // Other errors
-        return { data: null, error: fetchError }
-      }
-
-      console.log("Found existing player:", existingPlayer)
-      return { data: existingPlayer, error: null }
-    } catch (err) {
-      console.error("Unexpected error in getOrCreatePlayer:", err)
-      return { data: null, error: err }
-    }
-  },
-
   // Games
   async getCurrentGame() {
     const { data, error } = await supabase
       .from("games")
-      .select(`
-        *,
-        game_participants (
-          *,
-          players (*),
-          game_participant_gifts (
-            quantity,
-            gifts (
-              emoji,
-              name,
-              base_value
-            )
-          )
-        )
-      `)
+      .select("*")
       .eq("status", "waiting")
       .order("created_at", { ascending: false })
       .limit(1)
@@ -469,11 +244,7 @@ export const dbHelpers = {
 
   // Gifts
   async getAllGifts() {
-    const { data, error } = await supabase
-      .from("gifts")
-      .select("*")
-      .eq("is_active", true)
-      .order("rarity", { ascending: true })
+    const { data, error } = await supabase.from("gifts").select("*").order("value", { ascending: true })
 
     return { data, error }
   },

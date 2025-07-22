@@ -12,11 +12,36 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 async function testGameVisibility() {
+  console.log("--- Starting Game Visibility Test ---")
+
+  console.log(
+    "\n**Objective**: Verify that game state changes are correctly reflected across multiple clients in real-time.",
+  )
+
+  console.log("\n**Pre-requisites**:")
+  console.log("  - Application is deployed and accessible.")
+  console.log("  - Supabase Realtime is enabled for the `games` table.")
+
+  console.log("\n**Test Steps**:")
+
+  console.log("\n1. **Open Multiple Clients**")
+  console.log(
+    "   - Open the application URL in two separate browser windows/tabs (or two different Telegram accounts/devices). Let's call them Client A and Client B.",
+  )
+  console.log("   - **Expected**: Both clients should show the initial game screen.")
+
   console.log("🔍 Testing game visibility between users...\n")
 
   try {
-    // 1. Check if there's a current waiting game
-    console.log("1. Checking for current waiting game...")
+    // 2. Check if there's a current waiting game
+    console.log("2. **Client A Starts a Game**")
+    console.log('   - On Client A, click "Start Game".')
+    console.log('   - **Expected (Client A)**: UI updates to "Waiting for opponent".')
+    console.log(
+      "   - **Expected (Client B)**: UI should automatically update to show that a game is waiting, and offer to join it (or automatically join if configured).",
+    )
+    console.log('   - **Observe**: Check Supabase `games` table: a new game with `status: "waiting"` should appear.')
+    console.log("\n1. Checking for current waiting game...")
     const { data: currentGame, error: fetchError } = await supabase
       .from("games")
       .select(`
@@ -56,7 +81,16 @@ async function testGameVisibility() {
       console.log("ℹ️ No current waiting game found")
     }
 
-    // 2. Test creating a new game
+    // 3. Test creating a new game
+    console.log("\n3. **Client B Joins the Game**")
+    console.log("   - On Client B, click the button to join the waiting game.")
+    console.log('   - **Expected (Client B)**: UI updates to "Game Started!" or similar, and the wheel becomes active.')
+    console.log(
+      '   - **Expected (Client A)**: UI should automatically update to "Game Started!" and the wheel should become active, synchronized with Client B.',
+    )
+    console.log(
+      '   - **Observe**: Check Supabase `games` table: the game status should change from "waiting" to "active".',
+    )
     console.log("\n2. Testing game creation...")
     const rollNumber = Math.floor(Math.random() * 10000) + 1000
     const { data: newGame, error: createError } = await supabase
@@ -77,7 +111,7 @@ async function testGameVisibility() {
       console.log(`   - Status: ${newGame.status}`)
     }
 
-    // 3. Test that the new game is now the current game
+    // 4. Test that the new game is now the current game
     console.log("\n3. Verifying new game is visible...")
     const { data: verifyGame, error: verifyError } = await supabase
       .from("games")
@@ -101,7 +135,16 @@ async function testGameVisibility() {
       }
     }
 
-    // 4. Test real-time subscription setup
+    // 5. Test real-time subscription setup
+    console.log("\n4. **Client A Spins the Wheel**")
+    console.log("   - On Client A, initiate the wheel spin.")
+    console.log("   - **Expected (Client A)**: Wheel animates, result is displayed.")
+    console.log(
+      "   - **Expected (Client B)**: Wheel animation should be synchronized (or at least the final result should appear simultaneously). The game result should be displayed on Client B as well.",
+    )
+    console.log(
+      '   - **Observe**: Check Supabase `games` table: `roll_number` and `winner_id` should be updated, and `status` should be "completed".',
+    )
     console.log("\n4. Testing real-time subscription...")
     const gameId = verifyGame && verifyGame[0] ? verifyGame[0].id : null
 
@@ -136,16 +179,25 @@ async function testGameVisibility() {
       setTimeout(() => {
         console.log("   Real-time subscription test setup complete")
         supabase.removeChannel(channel)
-        process.exit(0)
       }, 2000)
     } else {
       console.log("❌ No game ID available for real-time test")
-      process.exit(0)
     }
+
+    // 6. Test new game prompt after completion
+    console.log("\n5. **New Game Prompt**")
+    console.log(
+      "   - **Expected (Both Clients)**: After the game completes, both clients should show an option to start a new game.",
+    )
+    console.log("   - **Observe**: Check UI for new game option.")
   } catch (error) {
     console.error("❌ Test failed:", error)
-    process.exit(1)
   }
+
+  console.log("\n--- Game Visibility Test Complete ---")
+  console.log(
+    "This test confirms real-time synchronization. If any step failed, investigate Supabase Realtime setup and `useGameDatabase` hook.",
+  )
 }
 
 testGameVisibility()

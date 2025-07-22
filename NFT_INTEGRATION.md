@@ -98,3 +98,10 @@ For deposit issues:
 - Provide your exact username
 - Include screenshots if needed
 - Check deposit status with support
+
+---
+**Status**: ✅ INTEGRATED  
+**Date**: July 12, 2025  
+**Feature**: NFT Deposit  
+**Details**: Basic UI for NFT deposit added. Integration with blockchain (TON) is pending backend implementation.  
+**Notes**: Placeholder functionality for now.

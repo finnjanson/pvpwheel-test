@@ -1,19 +1,18 @@
-/** @type {import('next').NextConfig} */
+// This file is intentionally left blank as next.config.ts is used.
+// If you need to configure Next.js, please use next.config.ts.
+
+/** rest of code here **/
 const nextConfig = {
   eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // !! WARN !!
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
     ignoreBuildErrors: true,
   },
   images: {
-    domains: ['gelprdyolhnwfbunchiu.supabase.co'],
+    unoptimized: true,
   },
+  // Add other configurations here if needed
 };
 
 export default nextConfig;

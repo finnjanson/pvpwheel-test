@@ -25,18 +25,56 @@ CREATE TABLE IF NOT EXISTS players (
 -- Games table to store game sessions
 CREATE TABLE IF NOT EXISTS games (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    roll_number INTEGER NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'waiting', -- waiting, spinning, completed, cancelled
-    countdown_ends_at TIMESTAMP WITH TIME ZONE, -- when the countdown should end
-    total_players INTEGER DEFAULT 0,
-    total_pot_balance DECIMAL(10, 6) DEFAULT 0,
-    total_gift_value DECIMAL(10, 6) DEFAULT 0,
-    winner_id UUID REFERENCES players(id),
-    winner_chance DECIMAL(5, 2), -- percentage with 2 decimal places
-    spin_timestamp TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    completed_at TIMESTAMP WITH TIME ZONE
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    roll_number INTEGER,
+    status TEXT DEFAULT 'waiting'::TEXT NOT NULL,
+    player1_id TEXT,
+    player2_id TEXT,
+    winner_id TEXT,
+    start_time TIMESTAMP WITH TIME ZONE,
+    end_time TIMESTAMP WITH TIME ZONE,
+    bet_amount NUMERIC,
+    nft_deposit_id TEXT,
+    nft_deposit_amount NUMERIC
 );
+
+-- Set up Row Level Security (RLS) for 'games' table
+ALTER TABLE games ENABLE ROW LEVEL SECURITY;
+
+-- Policy for read access (all users can read)
+CREATE POLICY "Enable read access for all users" ON games FOR SELECT USING (true);
+
+-- Policy for insert access (authenticated users only)
+CREATE POLICY "Enable insert for authenticated users only" ON games FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- Policy for update access (authenticated users only)
+CREATE POLICY "Enable update for authenticated users only" ON games FOR UPDATE USING (auth.role() = 'authenticated');
+
+-- Gifts table to define available gifts
+CREATE TABLE IF NOT EXISTS gifts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    description TEXT,
+    image_url TEXT,
+    value NUMERIC NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+);
+
+-- Set up Row Level Security (RLS) for 'gifts' table
+ALTER TABLE gifts ENABLE ROW LEVEL SECURITY;
+
+-- Policy for read access (all users can read)
+CREATE POLICY "Enable read access for all users" ON gifts FOR SELECT USING (true);
+
+-- Policy for insert access (authenticated users only)
+CREATE POLICY "Enable insert for authenticated users only" ON gifts FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- Seed initial data for 'gifts' table (optional, can be done via script)
+INSERT INTO gifts (name, description, image_url, value) VALUES
+('Small Gift', 'A small token of appreciation', '/images/gifts-icon.png', 10),
+('Medium Gift', 'A decent reward', '/images/gifts-icon.png', 50),
+('Large Gift', 'A generous present', '/images/gifts-icon.png', 100)
+ON CONFLICT (id) DO NOTHING; -- Prevents re-inserting if already exists
 
 -- Game participants table (junction table)
 CREATE TABLE IF NOT EXISTS game_participants (
@@ -50,20 +88,6 @@ CREATE TABLE IF NOT EXISTS game_participants (
     chance_percentage DECIMAL(5, 2),
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(game_id, player_id)
-);
-
--- Gifts table to define available gifts
-CREATE TABLE IF NOT EXISTS gifts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    emoji VARCHAR(10) NOT NULL UNIQUE,
-    name VARCHAR(255) NOT NULL,
-    base_value DECIMAL(10, 6) NOT NULL,
-    rarity VARCHAR(20) NOT NULL CHECK (rarity IN ('common', 'rare', 'epic', 'legendary')),
-    is_active BOOLEAN DEFAULT TRUE,
-    is_nft BOOLEAN DEFAULT FALSE,
-    nft_address VARCHAR(255), -- TON NFT collection address
-    nft_item_id VARCHAR(255), -- Specific NFT item ID (optional)
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Player gifts inventory
@@ -126,28 +150,6 @@ CREATE INDEX IF NOT EXISTS idx_nft_deposits_telegram_username ON nft_deposits(te
 CREATE INDEX IF NOT EXISTS idx_nft_deposits_status ON nft_deposits(status);
 CREATE INDEX IF NOT EXISTS idx_nft_deposits_created_at ON nft_deposits(created_at);
 
--- Insert default gifts
-INSERT INTO gifts (emoji, name, base_value, rarity, is_nft, nft_address) VALUES
-('🎁', 'Gift Box', 0.1, 'common', FALSE, NULL),
-('💎', 'Diamond', 0.5, 'rare', FALSE, NULL),
-('⭐', 'Star', 0.3, 'common', FALSE, NULL),
-('👑', 'Crown', 1.0, 'epic', FALSE, NULL),
-('🏆', 'Trophy', 2.0, 'legendary', FALSE, NULL),
-('💰', 'Money Bag', 0.8, 'epic', FALSE, NULL),
-('🎊', 'Confetti', 0.2, 'common', FALSE, NULL),
-('🚀', 'Rocket', 1.5, 'legendary', FALSE, NULL),
-('🎪', 'Circus', 0.4, 'rare', FALSE, NULL),
-('🌟', 'Golden Star', 0.6, 'rare', FALSE, NULL),
-('💫', 'Shooting Star', 1.2, 'epic', FALSE, NULL),
-('🎯', 'Target', 0.7, 'rare', FALSE, NULL),
-('🎨', 'Art Palette', 0.9, 'epic', FALSE, NULL),
-('🎭', 'Theater Mask', 0.5, 'rare', FALSE, NULL),
-('🎪', 'Carnival', 1.8, 'legendary', FALSE, NULL),
-('🦄', 'Unicorn NFT', 5.0, 'legendary', TRUE, 'EQD...example'),
-('🐉', 'Dragon NFT', 3.5, 'epic', TRUE, 'EQD...example'),
-('🎮', 'Gaming NFT', 1.8, 'rare', TRUE, 'EQD...example')
-ON CONFLICT (emoji) DO NOTHING;
-
 -- Function to update player stats after game completion
 CREATE OR REPLACE FUNCTION update_player_stats()
 RETURNS TRIGGER AS $$
@@ -164,7 +166,7 @@ BEGIN
     IF NEW.winner_id IS NOT NULL THEN
         UPDATE players 
         SET total_games_won = total_games_won + 1,
-            total_ton_won = total_ton_won + NEW.total_gift_value,
+            total_ton_won = total_ton_won + NEW.nft_deposit_amount,
             updated_at = NOW()
         WHERE id = NEW.winner_id;
     END IF;

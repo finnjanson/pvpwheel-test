@@ -1,9 +1,13 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import { Trophy, History, ChevronLeft, MessageCircle } from "lucide-react"
-import { useGameDatabase } from "../../hooks/useGameDatabase"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Image from "next/image"
+import { useGameDatabase } from "@/hooks/useGameDatabase"
+import { useGameState } from "@/hooks/useGameState"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Loader2 } from "lucide-react"
 
 // Telegram WebApp types
 interface TelegramUser {
@@ -78,16 +82,13 @@ interface MatchHistoryEntry {
   winnerChance: number
 }
 
+// Define types for Gift
 interface Gift {
   id: string
-  emoji: string
   name: string
-  value: number // TON value
-  rarity: "common" | "rare" | "epic" | "legendary"
-  quantity: number
-  nft_address?: string // TON NFT collection address
-  nft_item_id?: string // Specific NFT item ID
-  is_nft?: boolean // Whether this is an NFT gift
+  description: string
+  image_url: string
+  value: number
 }
 
 type HistoryFilter = "time" | "luckiest" | "fattest"
@@ -117,15 +118,42 @@ const COUNTDOWN_DURATION = 60
 const NFT_DEPOSIT_TELEGRAM = "@pwpwheel" // Telegram username for NFT gift transfers
 
 export default function WheelGame() {
+  const {
+    currentGame,
+    isLoadingGame,
+    errorGame,
+    createGame,
+    joinGame,
+    updateGameStatus,
+    updateGameRollAndWinner,
+    subscribeToGameChanges,
+    fetchGifts,
+  } = useGameDatabase()
+  const {
+    gameState,
+    setGameState,
+    spinWheel: spinWheelHook,
+    resetWheel,
+    isSpinning,
+    spinResult,
+    timeRemaining,
+    startTimer,
+    stopTimer,
+    resetTimer,
+  } = useGameState()
+
+  const [showNftDeposit, setShowNftDeposit] = useState(false)
+  const [nftAmount, setNftAmount] = useState("")
+  const [showGiftSelection, setShowGiftSelection] = useState(false)
+  const [availableGifts, setAvailableGifts] = useState<Gift[]>([])
+  const [selectedGift, setSelectedGift] = useState<Gift | null>(null)
+  const [activeNav, setActiveNav] = useState("pvp") // 'pvp', 'gifts', 'earn'
   // Database integration
   const {
-    currentGameId,
-    currentPlayer,
     dbPlayers,
     dbGameLogs,
     dbMatchHistory,
     playerInventory,
-    availableGifts,
     gameCountdown,
     loading: dbLoading,
     error: dbError,
@@ -136,14 +164,11 @@ export default function WheelGame() {
     addGameLog: addDbGameLog,
     loadMatchHistory,
     loadGameParticipants,
-    startGameCountdown,
-    getGameCountdown,
     clearError,
   } = useGameDatabase()
 
   const [players, setPlayers] = useState<Player[]>([])
   const [gameLog, setGameLog] = useState<GameLog[]>([])
-  const [isSpinning, setIsSpinning] = useState(false)
   const [winner, setWinner] = useState<Player | null>(null)
   const [showWinnerModal, setShowWinnerModal] = useState(false)
   const [playerName, setPlayerName] = useState("")
@@ -422,6 +447,10 @@ export default function WheelGame() {
     setPlayerBalance("")
   }
 
+  const [isSpinningState, setIsSpinningState] = useState(false)
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null)
+  const [currentPlayer, setCurrentPlayer] = useState<Player | null>(null)
+
   const spinWheel = useCallback(async () => {
     // Use activePlayers for consistency with display
     const activePlayers = dbPlayers.length > 0 ? dbPlayers : players
@@ -431,9 +460,9 @@ export default function WheelGame() {
       return
     }
 
-    if (isSpinning) return
+    if (isSpinningState) return
 
-    setIsSpinning(true)
+    setIsSpinningState(true)
     addToLog("🎰 Колесо крутится... Всем удачи!", "spin")
 
     // Add to database log
@@ -513,7 +542,7 @@ export default function WheelGame() {
         setRollNumber((prev) => prev + 1) // Increment roll number for next game
       }
       setTimeout(async () => {
-        setIsSpinning(false)
+        setIsSpinningState(false)
         setPlayers([])
         setWinner(null)
         setShowWinnerModal(false)
@@ -535,7 +564,7 @@ export default function WheelGame() {
     }, SPIN_DURATION)
   }, [
     players,
-    isSpinning,
+    isSpinningState,
     addToLog,
     preloadAvatars,
     rollNumber,
@@ -550,11 +579,11 @@ export default function WheelGame() {
   // Auto-spin when countdown reaches 0
   useEffect(() => {
     const activePlayers = dbPlayers.length > 0 ? dbPlayers : players
-    if (gameCountdown === 0 && !isSpinning && activePlayers.length >= 2) {
+    if (gameCountdown === 0 && !isSpinningState && activePlayers.length >= 2) {
       console.log("Database countdown reached 0, spinning wheel")
       spinWheel()
     }
-  }, [gameCountdown, isSpinning, dbPlayers, players, spinWheel])
+  }, [gameCountdown, isSpinningState, dbPlayers, players, spinWheel])
 
   // Draw wheel when players change
   useEffect(() => {
@@ -642,6 +671,8 @@ export default function WheelGame() {
 
           // Load participants for this game
           await loadGameParticipants(game.id)
+          setCurrentGameId(game.id)
+          setCurrentPlayer(game.game_participants?.[0] || null)
         } else {
           console.log("ℹ️ Нет текущей игры - будет создана, когда присоединится первый пользователь")
         }
@@ -656,1407 +687,483 @@ export default function WheelGame() {
     }
   }, [getCurrentGame, loadGameParticipants, currentGameId])
 
-  // Initialize Telegram WebApp with database integration
+  // Mock Telegram WebApp for local development
   useEffect(() => {
-    // Wait for Telegram WebApp to be available
-    const initTelegram = async () => {
-      if (typeof window !== "undefined" && window.Telegram?.WebApp) {
-        const tg = window.Telegram.WebApp
-        setWebApp(tg)
-
-        // Initialize the WebApp
-        tg.ready()
-        tg.expand()
-
-        // Configure main button (hidden by default)
-        tg.MainButton.hide()
-
-        // Get user data from Telegram
-        const user = tg.initDataUnsafe?.user
-        if (user) {
-          console.log("Telegram user data:", user)
-          setTelegramUser(user)
-
-          // Initialize player in database
-          try {
-            console.log("Инициализация игрока в базе данных...")
-            const dbPlayer = await initializePlayer(user)
-            if (dbPlayer) {
-              console.log("Игрок базы данных инициализирован:", dbPlayer)
-
-              // Auto-fill the player name with Telegram user info
-              const displayName = user.username || user.first_name || `Пользователь${user.id}`
-              setPlayerName(displayName)
-
-              addToLog(`🎯 С возвращением, ${displayName}! Готовы к большой победе? 🏆`, "info")
-
-              // Get or create current game
-              const game = await getCurrentGame(rollNumber)
-              if (game) {
-                console.log("Текущая игра:", game)
-
-                // Load participants for this game
-                await loadGameParticipants(game.id)
-              }
-            } else {
-              console.log("Не удалось инициализировать игрока в базе данных, используется автономный режим")
-              addToLog("⚠️ Подключение к базе данных не удалось. Игра в автономном режиме.", "info")
-            }
-          } catch (error) {
-            console.error("Не удалось инициализировать игрока:", error)
-            addToLog("⚠️ Не удалось подключиться к базе данных. Использование автономного режима.", "info")
-          }
-
-          // Show welcome notification
-          tg.HapticFeedback?.notificationOccurred("success")
-        } else {
-          console.log("Данные пользователя Telegram не найдены")
-          addToLog("⚡ Telegram WebApp готов! Присоединяйтесь к колесу, чтобы выиграть TON и подарки! 🎁", "info")
-        }
-      } else {
-        // Retry initialization if Telegram WebApp is not ready yet
-        setTimeout(initTelegram, 100)
+    if (typeof window !== "undefined" && !window.Telegram) {
+      window.Telegram = {
+        WebApp: {
+          initData:
+            "query_id=AAH_test&user=%7B%22id%22%3A12345%2C%22first_name%22%3A%22Test%22%2C%22last_name%22%3A%22User%22%2C%22username%22%3A%22testuser%22%2C%22language_code%22%3A%22en%22%2C%22is_premium%22%3Atrue%7D&auth_date=1678886400&hash=abcdef12345",
+          initDataUnsafe: {
+            query_id: "AAH_test",
+            user: {
+              id: 12345,
+              first_name: "Test",
+              last_name: "User",
+              username: "testuser",
+              language_code: "en",
+              is_premium: true,
+            },
+            auth_date: 1678886400,
+            hash: "abcdef12345",
+          },
+          ready: () => console.log("Telegram WebApp ready (mocked)."),
+          expand: () => console.log("Telegram WebApp expanded (mocked)."),
+          onEvent: (eventType, callback) => {
+            console.log(`Telegram WebApp event listener added for: ${eventType}`)
+            // You can manually trigger callbacks for testing specific events
+          },
+          offEvent: (eventType, callback) => console.log(`Telegram WebApp event listener removed for: ${eventType}`),
+          MainButton: {
+            text: "",
+            color: "",
+            textColor: "",
+            isVisible: false,
+            isActive: true,
+            setText: (text) => {
+              console.log(`MainButton setText: ${text}`)
+              this.text = text
+            },
+            show: () => {
+              console.log("MainButton show")
+              this.isVisible = true
+            },
+            hide: () => {
+              console.log("MainButton hide")
+              this.isVisible = false
+            },
+            onClick: (callback) => {
+              console.log("MainButton onClick registered")
+            },
+            offClick: (callback) => {
+              console.log("MainButton offClick unregistered")
+            },
+          },
+          BackButton: {
+            isVisible: false,
+            show: () => {
+              console.log("BackButton show")
+              this.isVisible = true
+            },
+            hide: () => {
+              console.log("BackButton hide")
+              this.isVisible = false
+            },
+            onClick: (callback) => {
+              console.log("BackButton onClick registered")
+            },
+            offClick: (callback) => {
+              console.log("BackButton offClick unregistered")
+            },
+          },
+          isExpanded: true,
+          viewportHeight: window.innerHeight,
+          viewportStableHeight: window.innerHeight,
+          themeParams: {
+            bg_color: "#ffffff",
+            text_color: "#000000",
+            hint_color: "#aaaaaa",
+            link_color: "#0000ff",
+            button_color: "#0088cc",
+            button_text_color: "#ffffff",
+            secondary_bg_color: "#f0f0f0",
+          },
+          colorScheme: "light",
+          version: "6.9",
+          platform: "tdesktop",
+          isVersionAtLeast: (version) => true, // Always true for mock
+          sendData: (data) => console.log("Telegram WebApp sendData:", data),
+          close: () => console.log("Telegram WebApp close"),
+          HapticFeedback: {
+            impactOccurred: (style) => console.log(`HapticFeedback impactOccurred: ${style}`),
+            notificationOccurred: (type) => console.log(`HapticFeedback notificationOccurred: ${type}`),
+            selectionChanged: () => console.log("HapticFeedback selectionChanged"),
+          },
+        },
       }
     }
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready()
+      window.Telegram.WebApp.expand()
+      console.log("Telegram WebApp initialized and expanded.")
+      console.log("Telegram WebApp initData:", window.Telegram.WebApp.initDataUnsafe)
+    }
+  }, [])
 
-    initTelegram()
-  }, [addToLog, initializePlayer, getCurrentGame, rollNumber])
-
-  // Sync database players with local state for wheel rendering
+  // Subscribe to game changes
   useEffect(() => {
-    if (dbPlayers.length > 0) {
-      console.log("🔄 Синхронизация", dbPlayers.length, "игроков из базы данных")
-      // Update local players to match database state
-      setPlayers(dbPlayers)
-    }
-  }, [dbPlayers])
-
-  // Use database players if available, otherwise fall back to local players
-  const activePlayers = dbPlayers.length > 0 ? dbPlayers : players
-
-  const totalPot = activePlayers.reduce((sum, player) => sum + player.gifts.length, 0)
-  const totalGiftValue = activePlayers.reduce((sum, player) => sum + player.giftValue, 0)
-  const totalValue = totalPot + totalGiftValue
-
-  const getRarityColor = (rarity: Gift["rarity"]) => {
-    switch (rarity) {
-      case "common":
-        return "text-gray-400 border-gray-500"
-      case "rare":
-        return "text-blue-400 border-blue-500"
-      case "epic":
-        return "text-purple-400 border-purple-500"
-      case "legendary":
-        return "text-yellow-400 border-yellow-500"
-      default:
-        return "text-gray-400 border-gray-500"
-    }
-  }
-
-  const handleGiftSelection = (giftId: string, quantity: number) => {
-    setSelectedGifts((prev) => {
-      const existing = prev.find((g) => g.id === giftId)
-      if (existing) {
-        if (quantity === 0) {
-          return prev.filter((g) => g.id !== giftId)
-        }
-        return prev.map((g) => (g.id === giftId ? { ...g, quantity } : g))
-      } else if (quantity > 0) {
-        return [...prev, { id: giftId, quantity }]
-      }
-      return prev
-    })
-  }
-
-  const getTotalGiftValue = () => {
-    return selectedGifts.reduce((total, selected) => {
-      const gift = userInventory.find((g) => g.id === selected.id)
-      return total + (gift ? gift.value * selected.quantity : 0)
-    }, 0)
-  }
-
-  const selectAllGifts = () => {
-    const allAvailableGifts = userInventory
-      .filter((gift) => gift.quantity > 0)
-      .map((gift) => ({ id: gift.id, quantity: gift.quantity }))
-    setSelectedGifts(allAvailableGifts)
-    webApp?.HapticFeedback?.impactOccurred("medium")
-  }
-
-  // NFT Deposit Functions
-  const openNftDepositPopup = () => {
-    setShowNftDepositPopup(true)
-    webApp?.HapticFeedback?.impactOccurred("light")
-  }
-
-  const copyDepositAddress = () => {
-    navigator.clipboard.writeText(NFT_DEPOSIT_TELEGRAM)
-    webApp?.HapticFeedback?.notificationOccurred("success")
-    addToLog("📋 Адрес Telegram скопирован в буфер обмена!", "info")
-  }
-
-  const copyUserMessage = () => {
-    const message = `Привет! Я хочу внести свои NFT подарки для PvP Wheel. Мой никнейм: @${telegramUser?.username || telegramUser?.first_name || "пользователь"}`
-    navigator.clipboard.writeText(message)
-    webApp?.HapticFeedback?.notificationOccurred("success")
-    addToLog("📋 Сообщение скопировано в буфер обмена!", "info")
-  }
-
-  const openTelegramDeposit = () => {
-    if (!telegramUser) {
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      alert("Пожалуйста, сначала подключите свой аккаунт Telegram!")
-      return
-    }
-
-    const message = `Привет! Я хочу внести свои NFT подарки для PvP Wheel. Мой никнейм: @${telegramUser?.username || telegramUser?.first_name || "пользователь"}`
-    const telegramUrl = `https://t.me/pwpwheel?text=${encodeURIComponent(message)}`
-
-    if (webApp) {
-      webApp.openLink(telegramUrl)
-    } else {
-      window.open(telegramUrl, "_blank")
-    }
-
-    webApp?.HapticFeedback?.impactOccurred("medium")
-    addToLog("📱 Открытие Telegram для связи с @pwpwheel для внесения NFT подарков", "info")
-  }
-
-  const startNftDeposit = async () => {
-    if (!telegramUser) {
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      alert("Пожалуйста, сначала подключите свой аккаунт Telegram!")
-      return
-    }
-
-    setIsDepositing(true)
-    webApp?.HapticFeedback?.impactOccurred("medium")
-
-    try {
-      // Open Telegram chat with @pwpwheel for NFT gift transfer
-      openTelegramDeposit()
-
-      addToLog("📱 Свяжитесь с @pwpwheel в Telegram, чтобы внести свои NFT подарки!", "info")
-
-      // Reset depositing state after a moment
-      setTimeout(() => {
-        setIsDepositing(false)
-        addToLog(" Отправьте свои NFT подарки на @pwpwheel и укажите свой никнейм.", "info")
-      }, 2000)
-    } catch (error) {
-      console.error("NFT deposit error:", error)
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      addToLog("❌ Не удалось открыть Telegram. Пожалуйста, свяжитесь с @pwpwheel вручную.", "info")
-      setIsDepositing(false)
-    }
-  }
-
-  const refreshInventory = async () => {
-    if (!currentPlayer) return
-
-    webApp?.HapticFeedback?.impactOccurred("light")
-    addToLog("🔄 Обновление инвентаря...", "info")
-
-    try {
-      // This would typically call a database function to reload the player's inventory
-      // For now, we'll just show a message
-      setTimeout(() => {
-        addToLog("✅ Инвентарь обновлен!", "info")
-      }, 1000)
-    } catch (error) {
-      console.error("Inventory refresh error:", error)
-      addToLog("❌ Не удалось обновить инвентарь.", "info")
-    }
-  }
-
-  const confirmGiftSelection = async () => {
-    if (selectedGifts.length === 0) {
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      return
-    }
-
-    const name = telegramUser
-      ? telegramUser.username || telegramUser.first_name || `Пользователь${telegramUser.id}`
-      : playerName.trim()
-
-    if (!name) {
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      alert("Не удалось получить имя игрока!")
-      return
-    }
-
-    if (players.length >= 15) {
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      alert("Разрешено максимум 15 игроков!")
-      return
-    }
-
-    // Haptic feedback for successful join/add
-    webApp?.HapticFeedback?.notificationOccurred("success")
-
-    // Create gifts array and calculate total value
-    const selectedGiftEmojis: string[] = []
-    let totalGiftValue = 0
-    const giftSelections: { giftId: string; quantity: number; totalValue: number }[] = []
-
-    selectedGifts.forEach((selected) => {
-      const gift = userInventory.find((g) => g.id === selected.id)
-      if (gift) {
-        for (let i = 0; i < selected.quantity; i++) {
-          selectedGiftEmojis.push(gift.emoji)
-        }
-        const selectionValue = gift.value * selected.quantity
-        totalGiftValue += selectionValue
-        giftSelections.push({
-          giftId: gift.id,
-          quantity: selected.quantity,
-          totalValue: selectionValue,
-        })
-      }
-    })
-
-    // Database integration: Join game with gifts
-    if (currentPlayer) {
-      try {
-        console.log("Попытка присоединиться к игре с интеграцией базы данных...")
-        console.log("Текущий игрок:", currentPlayer)
-        console.log("ID текущей игры:", currentGameId)
-
-        // Ensure we have a current game
-        let gameId = currentGameId
-        if (!gameId) {
-          console.log("Текущая игра не найдена, создаем новую игру...")
-          const game = await getCurrentGame(rollNumber)
-          if (game) {
-            gameId = game.id
-          } else {
-            console.error("Не удалось получить или создать игру")
-            webApp?.HapticFeedback?.notificationOccurred("error")
-            alert("Не удалось создать игру. Пожалуйста, попробуйте еще раз.")
-            return
-          }
-        }
-
-        console.log("Используется ID игры:", gameId)
-
-        if (!gameId) {
-          console.error("Нет действительного ID игры")
-          webApp?.HapticFeedback?.notificationOccurred("error")
-          alert("Не удалось присоединиться к игре. Пожалуйста, попробуйте еще раз.")
-          return
-        }
-
-        const participant = await joinGameWithGifts(
-          gameId,
-          currentPlayer.id,
-          giftSelections,
-          COLORS[players.length % COLORS.length],
-          players.length,
-        )
-
-        if (participant) {
-          console.log("Успешно присоединился к игре:", participant)
-
-          // Add to game log
-          await addDbGameLog(
-            gameId,
-            currentPlayer.id,
-            "join",
-            `🎁 ${name} присоединился с ${totalGiftValue.toFixed(3)} TON в подарках!`,
+    const unsubscribe = subscribeToGameChanges((payload) => {
+      console.log("Realtime change:", payload)
+      if (payload.eventType === "UPDATE" || payload.eventType === "INSERT") {
+        const updatedGame = payload.new
+        if (updatedGame.status === "waiting" && updatedGame.player1_id && !updatedGame.player2_id) {
+          setGameState({ status: "waiting", gameId: updatedGame.id, player1Id: updatedGame.player1_id })
+          startTimer(updatedGame.created_at)
+          setCurrentGameId(updatedGame.id)
+          setCurrentPlayer(
+            updatedGame.player1_id
+              ? { id: updatedGame.player1_id.toString(), name: "", balance: 0, color: "", gifts: [], giftValue: 0 }
+              : null,
           )
-        } else {
-          console.error("Не удалось присоединиться к игре - участник не возвращен")
-          webApp?.HapticFeedback?.notificationOccurred("error")
-          // Continue with local game logic as fallback
+        } else if (updatedGame.status === "active" && updatedGame.player1_id && updatedGame.player2_id) {
+          setGameState({
+            status: "active",
+            gameId: updatedGame.id,
+            player1Id: updatedGame.player1_id,
+            player2Id: updatedGame.player2_id,
+          })
+          stopTimer()
+          setCurrentGameId(updatedGame.id)
+          setCurrentPlayer(
+            updatedGame.player1_id
+              ? { id: updatedGame.player1_id.toString(), name: "", balance: 0, color: "", gifts: [], giftValue: 0 }
+              : null,
+          )
+        } else if (updatedGame.status === "completed" && updatedGame.roll_number !== null) {
+          setGameState({
+            status: "completed",
+            gameId: updatedGame.id,
+            rollNumber: updatedGame.roll_number,
+            winnerId: updatedGame.winner_id,
+          })
+          stopTimer()
+          setCurrentGameId(updatedGame.id)
+          setCurrentPlayer(
+            updatedGame.player1_id
+              ? { id: updatedGame.player1_id.toString(), name: "", balance: 0, color: "", gifts: [], giftValue: 0 }
+              : null,
+          )
         }
-      } catch (error) {
-        console.error("Не удалось присоединиться к игре с базой данных:", error)
-        webApp?.HapticFeedback?.notificationOccurred("error")
-        // Continue with local game logic as fallback
-      }
-    } else {
-      console.log("Текущий игрок не найден, используется только локальная игровая логика")
-    }
-
-    // Local game logic (always run for immediate UI feedback)
-    const existingPlayer = players.find((p) => p.name === name)
-
-    if (existingPlayer) {
-      // Add gifts to existing player
-      setPlayers((prev) =>
-        prev.map((player) => {
-          if (player.name === name) {
-            return {
-              ...player,
-              gifts: [...player.gifts, ...selectedGiftEmojis],
-              giftValue: player.giftValue + totalGiftValue,
-            }
-          }
-          return player
-        }),
-      )
-      addToLog(`🎁 ${name} добавил ${totalGiftValue.toFixed(3)} TON больше подарков!`, "join")
-    } else {
-      // Create new player
-      const newPlayer: Player = {
-        id: Date.now().toString(),
-        name,
-        balance: 0, // No balance when joining with gifts
-        color: COLORS[players.length % COLORS.length],
-        gifts: selectedGiftEmojis,
-        giftValue: totalGiftValue,
-        telegramUser: telegramUser || undefined,
-      }
-
-      setPlayers((prev) => [...prev, newPlayer])
-      addToLog(`🎁 ${name} присоединился с ${totalGiftValue.toFixed(3)} TON в подарках!`, "join")
-    }
-
-    // Update inventory (reduce quantities)
-    setUserInventory((prev) =>
-      prev.map((gift) => {
-        const selected = selectedGifts.find((s) => s.id === gift.id)
-        if (selected) {
-          return { ...gift, quantity: gift.quantity - selected.quantity }
-        }
-        return gift
-      }),
-    )
-
-    setSelectedGifts([])
-    setShowGiftPopup(false)
-  }
-
-  const joinWithGifts = () => {
-    if (selectedGifts.length === 0) {
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      alert("Пожалуйста, выберите хотя бы один подарок!")
-      return
-    }
-
-    const name = playerName.trim()
-    if (!name) {
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      alert("Пожалуйста, введите свое имя!")
-      return
-    }
-
-    if (players.some((p) => p.name === name)) {
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      alert("Имя игрока уже существует!")
-      return
-    }
-
-    if (players.length >= 15) {
-      webApp?.HapticFeedback?.notificationOccurred("error")
-      alert("Разрешено максимум 15 игроков!")
-      return
-    }
-
-    // Haptic feedback for successful join
-    webApp?.HapticFeedback?.notificationOccurred("success")
-
-    // Create gifts array and calculate total value
-    const selectedGiftEmojis: string[] = []
-    let totalGiftValue = 0
-
-    selectedGifts.forEach((selected) => {
-      const gift = userInventory.find((s) => s.id === selected.id)
-      if (gift) {
-        for (let i = 0; i < selected.quantity; i++) {
-          selectedGiftEmojis.push(gift.emoji)
-        }
-        totalGiftValue += gift.value * selected.quantity
       }
     })
 
-    const newPlayer: Player = {
-      id: Date.now().toString(),
-      name,
-      balance: 0, // No balance when joining with gifts
-      color: COLORS[players.length % COLORS.length],
-      gifts: selectedGiftEmojis,
-      giftValue: totalGiftValue,
+    return () => {
+      if (unsubscribe) {
+        unsubscribe.unsubscribe()
+      }
     }
+  }, [subscribeToGameChanges, setGameState, startTimer, stopTimer])
 
-    // Update inventory (reduce quantities)
-    setUserInventory((prev) =>
-      prev.map((gift) => {
-        const selected = selectedGifts.find((s) => s.id === gift.id)
-        if (selected) {
-          return { ...gift, quantity: gift.quantity - selected.quantity }
+  // Handle initial game load from database
+  useEffect(() => {
+    if (!isLoadingGame && !errorGame && currentGame) {
+      if (currentGame.status === "waiting") {
+        setGameState({ status: "waiting", gameId: currentGame.id, player1Id: currentGame.player1_id })
+        startTimer(currentGame.created_at)
+        setCurrentGameId(currentGame.id)
+        setCurrentPlayer(
+          currentGame.player1_id
+            ? { id: currentGame.player1_id.toString(), name: "", balance: 0, color: "", gifts: [], giftValue: 0 }
+            : null,
+        )
+      } else if (currentGame.status === "active") {
+        setGameState({
+          status: "active",
+          gameId: currentGame.id,
+          player1Id: currentGame.player1_id,
+          player2Id: currentGame.player2_id,
+        })
+        stopTimer()
+        setCurrentGameId(currentGame.id)
+        setCurrentPlayer(
+          currentGame.player1_id
+            ? { id: currentGame.player1_id.toString(), name: "", balance: 0, color: "", gifts: [], giftValue: 0 }
+            : null,
+        )
+      } else if (currentGame.status === "completed") {
+        setGameState({
+          status: "completed",
+          gameId: currentGame.id,
+          rollNumber: currentGame.roll_number,
+          winnerId: currentGame.winner_id,
+        })
+        stopTimer()
+        setCurrentGameId(currentGame.id)
+        setCurrentPlayer(
+          currentGame.player1_id
+            ? { id: currentGame.player1_id.toString(), name: "", balance: 0, color: "", gifts: [], giftValue: 0 }
+            : null,
+        )
+      }
+    } else if (!isLoadingGame && !currentGame) {
+      setGameState({ status: "idle" })
+      resetTimer()
+    }
+  }, [currentGame, isLoadingGame, errorGame, setGameState, startTimer, stopTimer, resetTimer])
+
+  const handleCreateGame = useCallback(async () => {
+    const userId = window.Telegram.WebApp.initDataUnsafe?.user?.id?.toString() || "mock_user_1"
+    await createGame(userId)
+  }, [createGame])
+
+  const handleJoinGame = useCallback(async () => {
+    const userId = window.Telegram.WebApp.initDataUnsafe?.user?.id?.toString() || "mock_user_2"
+    if (currentGame?.id) {
+      await joinGame(currentGame.id, userId)
+    }
+  }, [joinGame, currentGame])
+
+  const handleSpin = useCallback(async () => {
+    if (gameState.status === "active" && gameState.gameId) {
+      const roll = Math.floor(Math.random() * 100) + 1 // Roll between 1 and 100
+      const winnerId = roll % 2 === 0 ? gameState.player1Id : gameState.player2Id // Even for player1, odd for player2
+      await spinWheelHook(roll, () => {
+        if (gameState.gameId && winnerId) {
+          updateGameRollAndWinner(gameState.gameId, roll, winnerId, "completed")
         }
-        return gift
-      }),
-    )
+      })
+    }
+  }, [gameState, spinWheelHook, updateGameRollAndWinner])
 
-    setPlayers((prev) => [...prev, newPlayer])
-    addToLog(`🎁 ${name} присоединился с ${totalGiftValue.toFixed(3)} TON в подарках!`, "join")
-    setPlayerName("")
-    setSelectedGifts([])
-    setShowGiftPopup(false)
-  }
+  const handleResetGame = useCallback(() => {
+    resetWheel()
+    setGameState({ status: "idle" })
+    resetTimer()
+  }, [resetWheel, setGameState, resetTimer])
 
-  const getFilteredHistory = () => {
-    // Use database match history if available, otherwise use local state
-    const history = dbMatchHistory.length > 0 ? dbMatchHistory : matchHistory
-    const filtered = [...history]
+  const handleNftDeposit = useCallback(() => {
+    setShowNftDeposit(true)
+  }, [])
 
-    switch (historyFilter) {
-      case "time":
-        // Already sorted by timestamp (newest first)
-        return filtered
-      case "luckiest":
-        // Sort by lowest winning chance (luckiest wins)
-        return filtered.sort((a, b) => a.winnerChance - b.winnerChance)
-      case "fattest":
-        // Sort by highest total pot (biggest wins)
-        return filtered.sort((a, b) => b.totalPot - a.totalPot)
+  const confirmNftDeposit = useCallback(() => {
+    console.log(`Depositing NFT with amount: ${nftAmount}`)
+    // Here you would integrate with TON blockchain or similar
+    setShowNftDeposit(false)
+    setNftAmount("")
+    // Potentially update game state or user balance
+  }, [nftAmount])
+
+  const handleGiftSelection = useCallback(async () => {
+    const gifts = await fetchGifts()
+    if (gifts) {
+      setAvailableGifts(gifts)
+      setShowGiftSelection(true)
+    }
+  }, [fetchGifts])
+
+  const confirmGiftSelection = useCallback(() => {
+    if (selectedGift) {
+      console.log(`Selected gift: ${selectedGift.name} (Value: ${selectedGift.value})`)
+      // Logic to apply gift, e.g., add to user inventory, use in game
+    }
+    setShowGiftSelection(false)
+    setSelectedGift(null)
+  }, [selectedGift])
+
+  const renderGameContent = () => {
+    if (isLoadingGame) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <p className="mt-2 text-gray-400">Загрузка игры...</p>
+        </div>
+      )
+    }
+
+    if (errorGame) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-red-500">
+          <p>Ошибка загрузки игры: {errorGame.message}</p>
+          <Button onClick={() => window.location.reload()} className="mt-4">
+            Повторить
+          </Button>
+        </div>
+      )
+    }
+
+    switch (gameState.status) {
+      case "idle":
+        return (
+          <>
+            <h1 className="text-3xl font-bold mb-8">PvP Wheel</h1>
+            <Button onClick={handleCreateGame} className="w-48 h-12 text-lg">
+              Начать игру
+            </Button>
+            <Button onClick={handleNftDeposit} className="w-48 h-12 text-lg mt-4 bg-purple-600 hover:bg-purple-700">
+              Внести NFT
+            </Button>
+          </>
+        )
+      case "waiting":
+        const isPlayer1 = window.Telegram.WebApp.initDataUnsafe?.user?.id?.toString() === gameState.player1Id
+        return (
+          <>
+            <h1 className="text-3xl font-bold mb-8">Ожидание оппонента...</h1>
+            <p className="text-xl mb-4">Время ожидания: {timeRemaining} сек.</p>
+            {!isPlayer1 && (
+              <Button onClick={handleJoinGame} className="w-48 h-12 text-lg">
+                Присоединиться
+              </Button>
+            )}
+            <Button onClick={handleResetGame} className="w-48 h-12 text-lg mt-4 bg-red-600 hover:bg-red-700">
+              Отменить игру
+            </Button>
+          </>
+        )
+      case "active":
+        return (
+          <>
+            <h1 className="text-3xl font-bold mb-8">Игра началась!</h1>
+            <div className="wheel-container relative">
+              <div
+                className="wheel"
+                style={{
+                  transform: `rotate(${spinResult.rotation}deg)`,
+                  transition: isSpinningState ? "transform 4s cubic-bezier(0.25, 0.1, 0.25, 1)" : "none",
+                }}
+              >
+                {Array.from({ length: 10 }, (_, i) => (
+                  <div
+                    key={i}
+                    className="segment absolute w-1/2 h-1/2 flex justify-center items-center text-white font-bold text-2xl"
+                    style={{
+                      transform: `rotate(${i * 36}deg) skewY(54deg)`,
+                      transformOrigin: "bottom right",
+                      backgroundColor: i % 2 === 0 ? "#ff4d4d" : "#4d4dff",
+                      left: "50%",
+                      top: "50%",
+                    }}
+                  >
+                    <span
+                      style={{
+                        transform: `skewY(-54deg) rotate(${i * -36}deg)`,
+                        position: "relative",
+                        zIndex: 1,
+                      }}
+                    >
+                      {i + 1}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="pointer absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[15px] border-r-[15px] border-b-[30px] border-l-transparent border-r-transparent border-b-yellow-400 z-10" />
+            </div>
+            <Button onClick={spinWheel} disabled={isSpinningState} className="w-48 h-12 text-lg mt-8">
+              {isSpinningState ? "Крутится..." : "Крутить колесо"}
+            </Button>
+          </>
+        )
+      case "completed":
+        const isWinner = window.Telegram.WebApp.initDataUnsafe?.user?.id?.toString() === gameState.winnerId
+        return (
+          <>
+            <h1 className="text-3xl font-bold mb-8">Игра завершена!</h1>
+            <p className="text-xl mb-4">Выпало число: {gameState.rollNumber}</p>
+            <p className={`text-2xl font-bold ${isWinner ? "text-green-500" : "text-red-500"} mb-8`}>
+              {isWinner ? "Вы выиграли!" : "Вы проиграли!"}
+            </p>
+            <Button onClick={handleResetGame} className="w-48 h-12 text-lg">
+              Новая игра
+            </Button>
+          </>
+        )
       default:
-        return filtered
+        return null
     }
   }
-
-  const renderMatchHistory = () => (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => {
-            setShowMatchHistory(false)
-            // Force redraw wheel when returning
-            setTimeout(() => drawWheel(), 0)
-          }}
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-        >
-          <ChevronLeft className="w-5 h-5" />
-          Назад
-        </button>
-        <h2 className="text-lg font-semibold text-white">История матчей</h2>
-        <div className="w-16"></div> {/* Spacer */}
-      </div>
-
-      {/* Filter Buttons */}
-      <div className="flex gap-2 mb-4">
-        {[
-          { key: "time" as HistoryFilter, label: "По времени", icon: "🕒" },
-          { key: "luckiest" as HistoryFilter, label: "Самый удачливый", icon: "🍀" },
-          { key: "fattest" as HistoryFilter, label: "Самый богатый", icon: "💰" },
-        ].map((filter) => (
-          <button
-            key={filter.key}
-            onClick={() => setHistoryFilter(filter.key)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-              historyFilter === filter.key
-                ? "bg-purple-600 text-white"
-                : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
-            }`}
-          >
-            <span>{filter.icon}</span>
-            {filter.label}
-          </button>
-        ))}
-      </div>
-
-      {/* History List */}
-      <div className="space-y-3">
-        {getFilteredHistory().length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
-            <Trophy className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>Матчей пока нет</p>
-          </div>
-        ) : (
-          getFilteredHistory().map((match) => (
-            <div key={match.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-medium text-purple-400">Раунд #{match.rollNumber}</div>
-                  <div className="text-xs text-gray-500">{match.timestamp.toLocaleString()}</div>
-                </div>
-                <div className="text-sm font-semibold text-blue-400">{match.totalPot.toFixed(3)} TON</div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-4 h-4 rounded-full border-2 border-white/20"
-                    style={{ backgroundColor: match.winner.color }}
-                  />
-                  <span className="text-white font-medium">@{match.winner.name}</span>
-                  <span className="text-xs text-gray-500">выиграл с {match.winnerChance.toFixed(1)}% шансом</span>
-                </div>
-                <div className="text-xs text-gray-500">{match.players.length} игроков</div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  )
-
-  const renderPvPContent = () => (
-    <div className="space-y-4">
-      {/* Total Pot Display */}
-      <div className="text-center mb-6 relative">
-        {/* Match History Icon - Left edge of total pot div */}
-        <button
-          onClick={() => setShowMatchHistory(true)}
-          className="absolute left-0 top-1/2 transform -translate-y-1/2 p-2 text-gray-300 hover:text-white transition-colors bg-gray-800/40 rounded-full border border-gray-600 hover:bg-gray-700 shadow-md"
-          title="История матчей"
-        >
-          <History className="w-4 h-4" strokeWidth={2} />
-        </button>
-
-        {/* Chat Icon - Right edge of total pot div */}
-        <button
-          onClick={() => window.open("https://t.me/your_telegram_channel", "_blank")}
-          className="absolute right-0 top-1/2 transform -translate-y-1/2 p-2 text-gray-300 hover:text-white transition-colors bg-gray-800/40 rounded-full border border-gray-600 hover:bg-gray-700 shadow-md"
-          title="Присоединиться к Telegram каналу"
-        >
-          <MessageCircle className="w-4 h-4" strokeWidth={2} />
-        </button>
-
-        <div className="text-xs text-gray-400 font-medium">Общий банк</div>
-        <div className="text-lg font-bold text-yellow-400 flex items-center justify-center gap-1">
-          {activePlayers.reduce((sum, player) => sum + player.gifts.length, 0)} 🎁 | {totalGiftValue.toFixed(2)} 💎
-        </div>
-      </div>
-
-      {/* Wheel - Free floating */}
-      <div className="relative w-full max-w-xs mx-auto mb-6">
-        <div className="relative">
-          <canvas
-            ref={canvasRef}
-            width={300}
-            height={300}
-            className="w-full h-auto rounded-full"
-            style={{ background: "transparent" }}
-          />
-          {/* Pointer - pointing down from top */}
-          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 translate-y-2 z-10">
-            <div className="w-0 h-0 border-l-[15px] border-l-transparent border-r-[15px] border-r-transparent border-t-[20px] border-t-red-500 drop-shadow-lg"></div>
-          </div>
-          {/* Center - Timer Status */}
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 rounded-full w-16 h-16 flex items-center justify-center shadow-lg border-4 border-gray-600">
-            <div className="text-center">
-              {activePlayers.length < 2 ? (
-                <div className="text-xs text-blue-400 font-bold">Ожидание</div>
-              ) : isSpinning ? (
-                <div className="text-xs text-red-400 font-bold animate-pulse">В игре</div>
-              ) : gameCountdown !== null && gameCountdown > 0 ? (
-                <>
-                  <div className="text-xs text-gray-300 font-medium">Следующий</div>
-                  <div
-                    className={`text-sm font-bold ${gameCountdown <= 10 ? "text-red-400 animate-pulse" : "text-purple-400"}`}
-                  >
-                    {gameCountdown}с
-                  </div>
-                </>
-              ) : gameCountdown === 0 ? (
-                <div className="text-xs text-orange-400 font-bold animate-pulse">Крутится!</div>
-              ) : (
-                <>
-                  <div className="text-xs text-gray-300 font-medium">Готов</div>
-                  <div className="text-xs text-green-400 font-bold">ВПЕРЕД!</div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Action Buttons - Free floating */}
-      <div className="text-center mb-6">
-        {isSpinning ? (
-          <div className="bg-orange-500/20 text-orange-300 px-4 py-2 rounded-xl font-semibold text-sm animate-pulse border border-orange-500/30">
-            🎮 Игра в процессе...
-          </div>
-        ) : (
-          <div className="flex gap-2 justify-center">
-            <button
-              onClick={() => {
-                setShowGiftPopup(true)
-                webApp?.HapticFeedback?.impactOccurred("light")
-              }}
-              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-2 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg text-sm"
-            >
-              🎁 Добавить подарок
-            </button>
-            <button
-              onClick={() => addToLog("💎 Функция TON скоро появится!", "info")}
-              className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white px-4 py-2 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg text-sm"
-            >
-              💎 Добавить TON
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Joined Players Roll */}
-      {activePlayers.length > 0 && (
-        <div className="mb-6">
-          {/* Roll Header */}
-          <div className="text-center mb-4">
-            <div className="text-gray-400 text-sm font-mono">--------------РАУНД #{rollNumber}---------------</div>
-          </div>
-
-          {/* Players List */}
-          <div className="space-y-3">
-            {activePlayers.map((player, index) => {
-              const totalValue = activePlayers.reduce((sum, p) => sum + p.balance + p.giftValue, 0)
-              const playerValue = player.balance + player.giftValue
-              const chancePercentage = totalValue > 0 ? ((playerValue / totalValue) * 100).toFixed(1) : "0.0"
-
-              return (
-                <div
-                  key={player.id}
-                  className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-3 border border-gray-700/50 cursor-pointer hover:bg-gray-800/70 transition-all duration-200"
-                  onClick={() => {
-                    setSelectedPlayer(player)
-                    setShowPlayerGiftsPopup(true)
-                    webApp?.HapticFeedback?.impactOccurred("light")
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {/* Telegram Avatar */}
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
-                        {player.telegramUser?.photo_url ? (
-                          <img
-                            src={player.telegramUser.photo_url || "/placeholder.svg"}
-                            alt={player.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              // Fallback to initial if image fails to load
-                              e.currentTarget.style.display = "none"
-                            }}
-                          />
-                        ) : (
-                          <span>{player.name.charAt(0).toUpperCase()}</span>
-                        )}
-                      </div>
-
-                      {/* Username */}
-                      <div className="text-white text-sm font-medium">@{player.name.toLowerCase()}</div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      {/* Chance Percentage */}
-                      <div className="text-green-400 text-sm font-bold">{chancePercentage}%</div>
-
-                      {/* Gift Value in TON */}
-                      <div className="text-blue-400 text-sm font-medium">{player.giftValue.toFixed(3)} TON</div>
-                    </div>
-                  </div>
-
-                  {/* Gift Avatars Row */}
-                  <div className="flex items-center flex-wrap gap-1 mt-2 ml-11">
-                    {player.gifts.slice(0, 8).map((gift: string, giftIndex: number) => (
-                      <div key={giftIndex} className="text-sm">
-                        {gift}
-                      </div>
-                    ))}
-                    {player.gifts.length > 8 && (
-                      <div className="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded-full">
-                        +{player.gifts.length - 8} больше
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Total Gifts Summary */}
-          <div className="mt-4 text-center">
-            <div className="text-gray-400 text-sm">
-              Всего подарков: {activePlayers.reduce((sum, player) => sum + player.giftValue, 0).toFixed(3)} TON
-            </div>
-            <div className="text-gray-500 text-xs mt-1">Победитель забирает все подарки!</div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
-  const renderGiftsContent = () => (
-    <div className="space-y-4">
-      {/* NFT Deposit Button */}
-      <div className="flex justify-center">
-        <button
-          onClick={openNftDepositPopup}
-          className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg"
-        >
-          📱 Внести NFT подарки
-        </button>
-      </div>
-
-      <div className="bg-gray-800/90 backdrop-blur-sm rounded-3xl p-6 shadow-2xl border border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white">Мои подарки</h2>
-          <button
-            onClick={refreshInventory}
-            className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
-            title="Обновить инвентарь"
-          >
-            🔄
-          </button>
-        </div>
-
-        {userInventory.filter((gift) => gift.quantity > 0).length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <div className="text-4xl mb-4">🎁</div>
-            <div className="text-lg font-medium mb-2 text-gray-300">Подарков пока нет</div>
-            <div className="text-sm mb-4">Передайте NFT подарки, чтобы начать!</div>
-            <div className="text-xs text-gray-500">
-              Свяжитесь с {NFT_DEPOSIT_TELEGRAM} в Telegram, чтобы внести свои NFT подарки
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3 max-h-64 overflow-y-auto">
-            {userInventory.map((gift) => (
-              <div key={gift.id} className="bg-gray-700/50 rounded-xl p-4 border border-gray-600/50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="text-3xl">{gift.emoji}</div>
-                    <div>
-                      <div className="text-white font-medium">
-                        {gift.name}
-                        {gift.is_nft && (
-                          <span className="ml-2 text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white px-2 py-1 rounded-full">
-                            NFT
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-sm text-gray-400">{gift.value} TON каждый</div>
-                      <div
-                        className={`text-xs px-2 py-1 rounded-full inline-block mt-1 ${
-                          gift.rarity === "common"
-                            ? "bg-gray-600 text-gray-300"
-                            : gift.rarity === "rare"
-                              ? "bg-blue-600 text-blue-200"
-                              : gift.rarity === "epic"
-                                ? "bg-purple-600 text-purple-200"
-                                : "bg-yellow-600 text-yellow-200"
-                        }`}
-                      >
-                        {gift.rarity}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-white font-bold text-lg">{gift.quantity}</div>
-                    <div className="text-sm text-gray-400">в наличии</div>
-                  </div>
-                </div>
-                <div className="mt-2 pt-2 border-t border-gray-600/50">
-                  <div className="text-sm text-gray-300">
-                    Общая стоимость:{" "}
-                    <span className="text-blue-400 font-medium">{(gift.value * gift.quantity).toFixed(3)} TON</span>
-                  </div>
-                  {gift.is_nft && gift.nft_address && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      Коллекция NFT: {gift.nft_address.slice(0, 8)}...{gift.nft_address.slice(-6)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Total Inventory Value */}
-        {userInventory.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-600/50">
-            <div className="text-center">
-              <div className="text-lg font-bold text-white">
-                Общая стоимость инвентаря:{" "}
-                <span className="text-blue-400">
-                  {userInventory.reduce((sum, gift) => sum + gift.value * gift.quantity, 0).toFixed(3)} TON
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-
-  const renderEarnContent = () => (
-    <div className="space-y-4">
-      <div className="bg-gray-800/90 backdrop-blur-sm rounded-3xl p-6 shadow-2xl border border-gray-700">
-        <h2 className="text-xl font-bold text-white mb-4 text-center">Заработать TON</h2>
-        <div className="space-y-4">
-          {/* Invite Friends Section */}
-          <div className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl p-4 border border-blue-500/30">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="text-2xl">👥</div>
-              <div>
-                <h3 className="text-white font-medium">Пригласить друзей</h3>
-                <p className="text-sm text-gray-400">Поделитесь этой игрой со своими друзьями в Telegram</p>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                webApp?.HapticFeedback?.impactOccurred("light")
-                if (webApp) {
-                  const shareText = "🎯 Присоединяйтесь ко мне в PvP Wheel! Победитель забирает все TON и подарки! 🎁"
-                  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(shareText)}`
-                  webApp.openLink(shareUrl)
-                }
-              }}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 px-4 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2"
-            >
-              <MessageCircle className="w-4 h-4" />
-              Поделиться в Telegram
-            </button>
-          </div>
-
-          {/* Coming Soon Features */}
-          <div className="text-center py-8 text-gray-400">
-            <div className="text-4xl mb-4">💎</div>
-            <div className="text-lg font-medium mb-2 text-gray-300">Скоро появятся новые функции заработка</div>
-            <div className="text-sm">Выполняйте задания, чтобы заработать TON и подарки!</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
 
   return (
-    <div className="min-h-screen bg-gray-900 pb-16">
-      {dbLoading && (
-        <div className="fixed inset-0 bg-gray-900/90 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-gray-800 rounded-2xl p-8 shadow-2xl border border-gray-700 max-w-md w-full mx-4">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="animate-spin h-16 w-16 border-4 border-purple-500 rounded-full border-t-transparent"></div>
-              <h3 className="text-xl font-bold text-white">Подключение к базе данных...</h3>
-              <p className="text-gray-400 text-sm">
-                Это может занять несколько мгновений. Если подключение не удастся, пожалуйста, обновите страницу.
-              </p>
-              <button
-                onClick={() => window.location.reload()}
-                className="mt-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors"
-              >
-                Обновить страницу
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Database Error Banner */}
-      {dbError && (
-        <div className="bg-red-900/50 border-b border-red-500/50 p-3 text-center">
-          <div className="text-red-200 text-sm">⚠️ Ошибка базы данных: {dbError}</div>
-          <button onClick={clearError} className="text-red-300 hover:text-red-100 text-xs underline mt-1">
-            Скрыть
-          </button>
-        </div>
-      )}
-
-      {/* Loading Overlay */}
-      {dbLoading && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-400 mx-auto mb-3"></div>
-            <div className="text-white text-sm">Подключение к базе данных...</div>
-          </div>
-        </div>
-      )}
-
-      <div className="container mx-auto px-4 py-4">
-        {/* Main Content */}
-        <div className="mb-4">
-          {showMatchHistory ? (
-            renderMatchHistory()
-          ) : (
-            <>
-              {activeTab === "pvp" && renderPvPContent()}
-              {activeTab === "gifts" && renderGiftsContent()}
-              {activeTab === "earn" && renderEarnContent()}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Bottom Navigation */}
-      {!showMatchHistory && (
-        <div className="fixed bottom-0 left-0 right-0 z-40">
-          <div
-            className="relative w-full h-20 bg-cover bg-center rounded-t-3xl overflow-hidden"
-            style={{ backgroundImage: "url('/images/bottom-nav-bg.png')" }}
-          >
-            <div className="absolute inset-0 bg-black opacity-50 rounded-t-3xl"></div>{" "}
-            {/* Наложение для более темного эффекта */}
-            <div className="relative flex justify-around items-center h-full px-4">
-              <button
-                onClick={() => setActiveTab("pvp")}
-                className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg transition-all duration-200 ${
-                  activeTab === "pvp"
-                    ? "text-custom-green" // Активный цвет
-                    : "text-gray-400" // Неактивный цвет
-                }`}
-              >
-                <Image
-                  src="/images/pvp-icon.png"
-                  alt="PvP Icon"
-                  width={32}
-                  height={32}
-                  className={`${activeTab === "pvp" ? "opacity-100" : "opacity-50"}`} // Регулировка прозрачности для активного/неактивного состояния
-                />
-                <span className="text-sm font-medium text-white">PvP</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("gifts")}
-                className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg transition-all duration-200 ${
-                  activeTab === "gifts" ? "text-custom-green" : "text-gray-400"
-                }`}
-              >
-                <Image
-                  src="/images/gifts-icon.png"
-                  alt="Gifts Icon"
-                  width={32}
-                  height={32}
-                  className={`${activeTab === "gifts" ? "opacity-100" : "opacity-50"}`}
-                />
-                <span className="text-sm font-medium text-white">Подарки</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("earn")}
-                className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg transition-all duration-200 ${
-                  activeTab === "earn" ? "text-custom-green" : "text-gray-400"
-                }`}
-              >
-                <Image
-                  src="/images/earn-icon.png"
-                  alt="Earn Icon"
-                  width={32}
-                  height={32}
-                  className={`${activeTab === "earn" ? "opacity-100" : "opacity-50"}`}
-                />
-                <span className="text-sm font-medium text-white">Заработать</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Gift Selection Popup */}
-      {showGiftPopup && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setShowGiftPopup(false)
-            webApp?.HapticFeedback?.impactOccurred("light")
-          }}
-        >
-          <div
-            className="bg-gray-800 rounded-2xl max-w-lg w-full h-[85vh] overflow-hidden border border-gray-700 relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close Button */}
-            <button
-              onClick={() => {
-                setShowGiftPopup(false)
-                webApp?.HapticFeedback?.impactOccurred("light")
-              }}
-              className="absolute top-4 right-4 z-10 w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center text-gray-300 hover:text-white transition-colors"
-            >
-              ✕
-            </button>
-
-            {/* Header */}
-            <div className="p-4 border-b border-gray-700">
-              <h3 className="text-xl font-bold text-white text-center">Выберите подарки для участия</h3>
-              <p className="text-sm text-gray-400 text-center mt-1">Выберите подарки, чтобы добавить их на колесо</p>
-            </div>
-
-            {/* Gifts Grid */}
-            <div className="p-4 flex-1 overflow-y-auto" style={{ height: "calc(85vh - 180px)" }}>
-              {userInventory.filter((gift) => gift.quantity > 0).length === 0 ? (
-                <div className="text-center text-gray-400 py-8">
-                  <div className="text-4xl mb-2">📦</div>
-                  <p>Подарков нет в наличии</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {userInventory
-                    .filter((gift) => gift.quantity > 0)
-                    .map((gift) => {
-                      const selected = selectedGifts.find((s) => s.id === gift.id)
-                      const selectedQuantity = selected ? selected.quantity : 0
-
-                      return (
-                        <div
-                          key={gift.id}
-                          className={`relative bg-gray-700/50 rounded-xl p-3 border-2 transition-all duration-200 ${
-                            selectedQuantity > 0
-                              ? "border-purple-500 bg-purple-500/20"
-                              : "border-gray-600/50 hover:border-gray-500"
-                          }`}
-                        >
-                          {/* Tap Area for Selection */}
-                          <button
-                            onClick={() => {
-                              if (selectedQuantity < gift.quantity) {
-                                setSelectedGifts((prev) => {
-                                  const existing = prev.find((s) => s.id === gift.id)
-                                  if (existing) {
-                                    return prev.map((s) => (s.id === gift.id ? { ...s, quantity: s.quantity + 1 } : s))
-                                  } else {
-                                    return [...prev, { id: gift.id, quantity: 1 }]
-                                  }
-                                })
-                                webApp?.HapticFeedback?.selectionChanged()
-                              }
-                            }}
-                            disabled={selectedQuantity >= gift.quantity}
-                            className="w-full text-left"
-                          >
-                            <div className="text-center mb-2">
-                              <div className="text-3xl mb-1">{gift.emoji}</div>
-                              <div className="text-white font-medium text-sm">{gift.name}</div>
-                            </div>
-
-                            <div className="text-center">
-                              <div className="text-xs text-gray-400 mb-1">
-                                {gift.value} TON · {gift.quantity} доступно
-                              </div>
-                              <div
-                                className={`text-xs px-2 py-1 rounded-full inline-block ${
-                                  gift.rarity === "common"
-                                    ? "bg-gray-600 text-gray-300"
-                                    : gift.rarity === "rare"
-                                      ? "bg-blue-600 text-blue-200"
-                                      : gift.rarity === "epic"
-                                        ? "bg-purple-600 text-purple-200"
-                                        : "bg-yellow-600 text-yellow-200"
-                                }`}
-                              >
-                                {gift.rarity}
-                              </div>
-                            </div>
-                          </button>
-
-                          {/* Quantity Controls */}
-                          {selectedQuantity > 0 && (
-                            <div className="absolute -top-2 -right-2 bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
-                              {selectedQuantity}
-                            </div>
-                          )}
-
-                          {/* Minus Button (only show if selected) */}
-                          {selectedQuantity > 0 && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedGifts((prev) =>
-                                  prev
-                                    .map((s) => (s.id === gift.id ? { ...s, quantity: s.quantity - 1 } : s))
-                                    .filter((s) => s.quantity > 0),
-                                )
-                              }}
-                              className="absolute -bottom-2 -left-2 w-6 h-6 bg-red-500 hover:bg-red-400 text-white rounded-full flex items-center justify-center text-xs font-bold transition-colors"
-                            >
-                              -
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                </div>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="p-4 border-t border-gray-700">
-              <div className="flex gap-3">
-                <button
-                  onClick={selectAllGifts}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-xl font-medium transition-colors"
-                >
-                  Выбрать все
-                </button>
-                <button
-                  onClick={confirmGiftSelection}
-                  disabled={selectedGifts.length === 0}
-                  className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 text-white py-3 px-4 rounded-xl font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Подтвердить
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+    <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-white">
+      <main className="flex-grow flex flex-col items-center justify-center p-4 pb-[80px]">{renderGameContent()}</main>
 
       {/* NFT Deposit Popup */}
-      {showNftDepositPopup && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setShowNftDepositPopup(false)
-            webApp?.HapticFeedback?.impactOccurred("light")
-          }}
-        >
-          <div
-            className="bg-gray-800 rounded-2xl max-w-md w-full max-h-[80vh] overflow-hidden border border-gray-700 relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close Button */}
-            <button
-              onClick={() => {
-                setShowNftDepositPopup(false)
-                webApp?.HapticFeedback?.impactOccurred("light")
-              }}
-              className="absolute top-4 right-4 z-10 w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center text-gray-300 hover:text-white transition-colors"
+      <Dialog open={showNftDeposit} onOpenChange={setShowNftDeposit}>
+        <DialogContent className="sm:max-w-[425px] bg-[#1a1a1a] text-white border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="text-blue-500">Внести NFT</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <p className="text-gray-300">Введите сумму NFT для депозита:</p>
+            <Input
+              id="nft-amount"
+              type="number"
+              placeholder="0.00"
+              value={nftAmount}
+              onChange={(e) => setNftAmount(e.target.value)}
+              className="col-span-3 bg-[#0a0a0a] text-white border-gray-600"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowNftDeposit(false)}
+              className="bg-gray-600 hover:bg-gray-700 text-white"
             >
-              ✕
-            </button>
+              Отмена
+            </Button>
+            <Button onClick={confirmNftDeposit} className="bg-blue-600 hover:bg-blue-700 text-white">
+              Подтвердить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            {/* Header */}
-            <div className="p-6 border-b border-gray-700">
-              <h3 className="text-xl font-bold text-white text-center mb-2">Внести NFT подарки</h3>
-              <p className="text-sm text-gray-400 text-center">Передайте свои NFT подарки через Telegram</p>
-            </div>
-
-            {/* Content */}
-            <div className="p-6 overflow-y-auto" style={{ maxHeight: "calc(80vh - 200px)" }}>
-              <div className="space-y-4">
-                {/* Instructions */}
-                <div className="bg-gray-700/50 rounded-xl p-4 border border-gray-600/50">
-                  <h4 className="text-white font-medium mb-2">Как внести:</h4>
-                  <ol className="text-sm text-gray-300 space-y-1 list-decimal list-inside">
-                    <li>Свяжитесь с {NFT_DEPOSIT_TELEGRAM} в Telegram</li>
-                    <li>Сообщите им, что хотите внести NFT подарки</li>
-                    <li>
-                      Укажите свой никнейм: @{telegramUser?.username || telegramUser?.first_name || "ваш_никнейм"}
-                    </li>
-                    <li>Передайте им свои NFT подарки</li>
-                    <li>Дождитесь подтверждения и обновления инвентаря</li>
-                  </ol>
-                </div>
-
-                {/* Telegram Contact */}
-                <div className="bg-gray-700/50 rounded-xl p-4 border border-gray-600/50">
-                  <h4 className="text-white font-medium mb-2">Контакт:</h4>
-                  <div className="bg-gray-900 rounded-lg p-3 mb-2">
-                    <div className="text-sm text-gray-300 font-mono text-center">{NFT_DEPOSIT_TELEGRAM}</div>
-                  </div>
-                  <button
-                    onClick={copyDepositAddress}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    📋 Скопировать никнейм
-                  </button>
-                </div>
-
-                {/* Pre-written Message */}
-                <div className="bg-gray-700/50 rounded-xl p-4 border border-gray-600/50">
-                  <h4 className="text-white font-medium mb-2">Готовое сообщение:</h4>
-                  <div className="bg-gray-900 rounded-lg p-3 mb-2">
-                    <div className="text-sm text-gray-300">
-                      "Привет! Я хочу внести свои NFT подарки для PvP Wheel. Мой никнейм: @
-                      {telegramUser?.username || telegramUser?.first_name || "ваш_никнейм"}"
-                    </div>
-                  </div>
-                  <button
-                    onClick={copyUserMessage}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    📋 Скопировать сообщение
-                  </button>
-                </div>
-
-                {/* Warning */}
-                <div className="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4">
-                  <div className="flex items-start gap-2">
-                    <span className="text-blue-400 text-lg">ℹ️</span>
-                    <div>
-                      <h4 className="text-blue-400 font-medium mb-1">Важно:</h4>
-                      <ul className="text-sm text-blue-200 space-y-1">
-                        <li>• Будут приняты только поддерживаемые NFT подарки</li>
-                        <li>• Всегда указывайте свой точный никнейм</li>
-                        <li>• Переводы обрабатываются вручную @pwpwheel</li>
-                        <li>• Обратитесь в поддержку, если ваши подарки не появятся</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-gray-700">
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowNftDepositPopup(false)}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 px-4 rounded-xl font-medium transition-colors"
+      {/* Gift Selection Popup */}
+      <Dialog open={showGiftSelection} onOpenChange={setShowGiftSelection}>
+        <DialogContent className="sm:max-w-[600px] bg-[#1a1a1a] text-white border-gray-700 max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-blue-500">Выберите подарок</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
+            {availableGifts.length > 0 ? (
+              availableGifts.map((gift) => (
+                <div
+                  key={gift.id}
+                  className={`flex flex-col items-center p-4 border rounded-lg cursor-pointer transition-all ${
+                    selectedGift?.id === gift.id ? "border-blue-500 bg-blue-900/20" : "border-gray-700 bg-gray-800"
+                  }`}
+                  onClick={() => setSelectedGift(gift)}
                 >
-                  Отмена
-                </button>
-                <button
-                  onClick={startNftDeposit}
-                  disabled={isDepositing}
-                  className={`flex-1 ${isDepositing ? "bg-gray-600" : "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"} text-white py-3 px-4 rounded-xl font-medium transition-colors`}
-                >
-                  {isDepositing ? "Открытие Telegram..." : "Связаться с @pwpwheel"}
-                </button>
-              </div>
-            </div>
+                  <Image
+                    src={gift.image_url || "/placeholder.svg"}
+                    alt={gift.name}
+                    width={64}
+                    height={64}
+                    className="mb-2"
+                  />
+                  <h3 className="text-lg font-semibold text-white">{gift.name}</h3>
+                  <p className="text-sm text-gray-400">{gift.description}</p>
+                  <p className="text-md font-bold text-green-400 mt-1">{gift.value} TON</p>
+                </div>
+              ))
+            ) : (
+              <p className="col-span-full text-center text-gray-400">Подарки не найдены.</p>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* Player Gifts Popup */}
-      {showPlayerGiftsPopup && selectedPlayer && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setShowPlayerGiftsPopup(false)
-            setSelectedPlayer(null)
-            webApp?.HapticFeedback?.impactOccurred("light")
-          }}
-        >
-          <div
-            className="bg-gray-800 rounded-2xl max-w-md w-full max-h-[80vh] overflow-hidden border border-gray-700 relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close Button */}
-            <button
-              onClick={() => {
-                setShowPlayerGiftsPopup(false)
-                setSelectedPlayer(null)
-                webApp?.HapticFeedback?.impactOccurred("light")
-              }}
-              className="absolute top-4 right-4 z-10 w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center text-gray-300 hover:text-white transition-colors"
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowGiftSelection(false)}
+              className="bg-gray-600 hover:bg-gray-700 text-white"
             >
-              ✕
-            </button>
-
-            {/* Header */}
-            <div className="p-4 border-b border-gray-700">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center text-white text-sm font-bold overflow-hidden">
-                  {selectedPlayer.telegramUser?.photo_url ? (
-                    <img
-                      src={selectedPlayer.telegramUser.photo_url || "/placeholder.svg"}
-                      alt={selectedPlayer.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        // Fallback to initial if image fails to load
-                        e.currentTarget.style.display = "none"
-                      }}
-                    />
-                  ) : (
-                    <span>{selectedPlayer.name.charAt(0).toUpperCase()}</span>
-                  )}
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">@{selectedPlayer.name.toLowerCase()}</h3>
-                  <p className="text-sm text-gray-400">{selectedPlayer.giftValue.toFixed(3)} TON в подарках</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Gifts List */}
-            <div className="p-4 overflow-y-auto" style={{ maxHeight: "calc(80vh - 160px)" }}>
-              {selectedPlayer.gifts.length === 0 ? (
-                <div className="text-center text-gray-400 py-8">
-                  <div className="text-4xl mb-2">🎁</div>
-                  <p>Не присоединился с подарками</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {/* Group gifts by type and show counts */}
-                  {(() => {
-                    const giftCounts = selectedPlayer.gifts.reduce(
-                      (counts, gift) => {
-                        counts[gift] = (counts[gift] || 0) + 1
-                        return counts
-                      },
-                      {} as Record<string, number>,
-                    )
-
-                    return Object.entries(giftCounts).map(([giftEmoji, count]) => {
-                      // Find the gift info from inventory to get name and value
-                      const giftInfo = userInventory.find((g) => g.emoji === giftEmoji)
-
-                      return (
-                        <div key={giftEmoji} className="bg-gray-700/50 rounded-xl p-4 border border-gray-600/50">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="text-3xl">{giftEmoji}</div>
-                              <div>
-                                <div className="text-white font-medium">
-                                  {giftInfo?.name || 'Неизвестный подарок'}
-                                </div>
-                                <div className="text-sm text-gray-400">
-                                  {giftInfo?.value || 0} TON каждый
-                                </div>
-                                {giftInfo && (
-                                  <div className={`text-xs px-2 py-1 rounded-full inline-block mt-1 ${
-                                    giftInfo.rarity === 'common' ? 'bg-gray-600 text-gray-300' :
-                                    giftInfo.rarity === 'rare' ? 'bg-blue-600 text-blue-200' :
-                                    giftInfo.rarity === 'epic' ? 'bg-purple-600 text-purple-200' :
-                                    giftInfo.rarity === 'legendary' ? 'bg-yellow-600 text-yellow-200'
-                                  }`}>
-                                    {giftInfo.rarity}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-white font-bold text-lg">×{count}</div>
-                              <div className="text-sm text-gray-400">количество</div>
-                            </div>
-                          </div>
-                          <div className="mt-2 pt-2 border-t border-gray-600/50">
-                            <div className="text-sm text-gray-300">
-                              Общая стоимость: <span className="text-blue-400 font-medium">
-                                {((giftInfo?.value || 0) * count).toFixed(3)} TON
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  })()}
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-gray-700">
-              <div className="text-center">
-                <div className="text-sm text-gray-400">Всего подарков: {selectedPlayer.gifts.length}</div>
-                <div className="text-lg font-bold text-blue-400">{selectedPlayer.giftValue.toFixed(3)} TON</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Winner Modal */}
-      {showWinnerModal && winner && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full mx-4 text-center animate-bounce">
-            <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-4">Победитель!</h2>
-            <div className="text-xl text-gray-600 mb-2">{winner.name}</div>
-            <div className="text-2xl font-bold text-blue-600 mb-2">
-              Выиграл: {activePlayers.reduce((sum, player) => sum + player.giftValue, 0).toFixed(3)} TON
-            </div>
-            <button
-              onClick={() => setShowWinnerModal(false)}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 px-8 rounded-xl font-semibold hover:from-purple-700 hover:to-blue-700 transition-all duration-200"
+              Отмена
+            </Button>
+            <Button
+              onClick={confirmGiftSelection}
+              disabled={!selectedGift}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
-              Продолжить
-            </button>
-          </div>
+              Подтвердить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bottom Navigation */}
+      <nav className="bottom-navigation bg-gradient-to-t from-[#1a1a1a] to-[#0a0a0a] border-t border-gray-700">
+        <div className={`nav-item ${activeNav === "pvp" ? "active" : ""}`} onClick={() => setActiveNav("pvp")}>
+          <Image src="/images/pvp-icon.png" alt="PvP" width={24} height={24} />
+          <span>PvP</span>
         </div>
-      )}
+        <div className={`nav-item ${activeNav === "gifts" ? "active" : ""}`} onClick={handleGiftSelection}>
+          <Image src="/images/gifts-icon.png" alt="Gifts" width={24} height={24} />
+          <span>Подарки</span>
+        </div>
+        <div className={`nav-item ${activeNav === "earn" ? "active" : ""}`} onClick={() => setActiveNav("earn")}>
+          <Image src="/images/earn-icon.png" alt="Earn" width={24} height={24} />
+          <span>Заработать</span>
+        </div>
+      </nav>
     </div>
   )
-  \
 }

@@ -1,144 +1,114 @@
-const { createClient } = require("@supabase/supabase-js")
-require("dotenv").config({ path: ".env.local" })
+// This script simulates the app loading process, useful for debugging
+// client-side initialization or Telegram WebApp specific behaviors.
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+function simulateTelegramWebAppLoad() {
+  console.log("Simulating Telegram WebApp load...")
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("❌ Missing Supabase environment variables")
-  process.exit(1)
-}
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-// Simulate what the app does when it loads
-async function simulateAppLoad() {
-  console.log("🔄 Simulating app load process...\n")
-
-  try {
-    // 1. Simulate getCurrentGame(0) - what happens on component mount
-    console.log("1. Simulating getCurrentGame(0) call (component mount)...")
-    const { data: currentGame, error: fetchError } = await supabase
-      .from("games")
-      .select(`
-        *,
-        game_participants (
-          *,
-          players (*)
-        )
-      `)
-      .eq("status", "waiting")
-      .order("created_at", { ascending: false })
-      .limit(1)
-
-    if (fetchError) {
-      console.error("❌ Error fetching current game:", fetchError)
-      return
-    }
-
-    if (currentGame && currentGame.length > 0) {
-      const game = currentGame[0]
-      console.log("✅ Found existing game:")
-      console.log(`   - Game ID: ${game.id}`)
-      console.log(`   - Roll Number: ${game.roll_number}`)
-      console.log(`   - Status: ${game.status}`)
-      console.log(`   - Participants: ${game.game_participants?.length || 0}`)
-
-      // 2. Simulate loadGameParticipants call
-      console.log("\n2. Simulating loadGameParticipants call...")
-      const { data: participants, error: partError } = await supabase
-        .from("game_participants")
-        .select(`
-          *,
-          players (
-            id,
-            username,
-            first_name,
-            last_name,
-            photo_url,
-            is_premium
-          )
-        `)
-        .eq("game_id", game.id)
-        .order("position_index")
-
-      if (partError) {
-        console.error("❌ Error loading participants:", partError)
-      } else {
-        console.log(`✅ Loaded ${participants?.length || 0} participants`)
-
-        if (participants && participants.length > 0) {
-          participants.forEach((participant, index) => {
-            console.log(
-              `   ${index + 1}. ${participant.players?.username || participant.players?.first_name || "Unknown"} (Balance: ${participant.balance || 0})`,
-            )
-          })
-        } else {
-          console.log("   No participants in this game yet")
-        }
-      }
-
-      // 3. Show what the app state should be
-      console.log("\n3. Expected app state:")
-      console.log(`   - currentGameId: ${game.id}`)
-      console.log(`   - dbPlayers: ${participants?.length || 0} players`)
-      console.log(`   - activePlayers: ${participants?.length || 0} players`)
-      console.log(`   - Game should be visible to users: ${game.id ? "YES" : "NO"}`)
-
-      // 4. What happens when user tries to join
-      console.log("\n4. What happens when user tries to join:")
-      console.log(`   - Game ID available: ${game.id ? "YES" : "NO"}`)
-      console.log(`   - User can join: ${game.id ? "YES" : "NO"}`)
-    } else {
-      console.log("❌ No current game found")
-      console.log("   - currentGameId: null")
-      console.log("   - dbPlayers: []")
-      console.log("   - activePlayers: [] (falls back to local players)")
-      console.log("   - Game should be visible to users: NO")
-    }
-
-    // 5. Check what happens with real-time subscription
-    console.log("\n5. Testing real-time subscription setup...")
-    if (currentGame && currentGame.length > 0) {
-      const gameId = currentGame[0].id
-      console.log(`   Setting up subscription for game: ${gameId}`)
-
-      // Test subscription
-      const channel = supabase
-        .channel(`test_${gameId}`)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "game_participants", filter: `game_id=eq.${gameId}` },
-          (payload) => {
-            console.log("📡 Real-time update would trigger:", payload.eventType)
+  // Mock Telegram WebApp object if not present
+  if (typeof window !== "undefined" && !window.Telegram) {
+    window.Telegram = {
+      WebApp: {
+        initData:
+          "query_id=AAH_test&user=%7B%22id%22%3A12345%2C%22first_name%22%3A%22Test%22%2C%22last_name%22%3A%22User%22%2C%22username%22%3A%22testuser%22%2C%22language_code%22%3A%22en%22%2C%22is_premium%22%3Atrue%7D&auth_date=1678886400&hash=abcdef12345",
+        initDataUnsafe: {
+          query_id: "AAH_test",
+          user: {
+            id: 12345,
+            first_name: "Test",
+            last_name: "User",
+            username: "testuser",
+            language_code: "en",
+            is_premium: true,
           },
-        )
-        .subscribe((status) => {
-          console.log(`📡 Subscription status: ${status}`)
-        })
-
-      // Wait and cleanup
-      setTimeout(() => {
-        supabase.removeChannel(channel)
-        console.log("📡 Subscription cleaned up")
-      }, 1000)
-    } else {
-      console.log("   No game to subscribe to")
+          auth_date: 1678886400,
+          hash: "abcdef12345",
+        },
+        ready: () => console.log("Telegram WebApp ready (mocked)."),
+        expand: () => console.log("Telegram WebApp expanded (mocked)."),
+        onEvent: (eventType, callback) => {
+          console.log(`Telegram WebApp event listener added for: ${eventType}`)
+          // You can manually trigger callbacks for testing specific events
+        },
+        offEvent: (eventType, callback) => console.log(`Telegram WebApp event listener removed for: ${eventType}`),
+        MainButton: {
+          text: "",
+          color: "",
+          textColor: "",
+          isVisible: false,
+          isActive: true,
+          setText: (text) => {
+            console.log(`MainButton setText: ${text}`)
+            this.text = text
+          },
+          show: () => {
+            console.log("MainButton show")
+            this.isVisible = true
+          },
+          hide: () => {
+            console.log("MainButton hide")
+            this.isVisible = false
+          },
+          onClick: (callback) => {
+            console.log("MainButton onClick registered")
+          },
+          offClick: (callback) => {
+            console.log("MainButton offClick unregistered")
+          },
+        },
+        BackButton: {
+          isVisible: false,
+          show: () => {
+            console.log("BackButton show")
+            this.isVisible = true
+          },
+          hide: () => {
+            console.log("BackButton hide")
+            this.isVisible = false
+          },
+          onClick: (callback) => {
+            console.log("BackButton onClick registered")
+          },
+          offClick: (callback) => {
+            console.log("BackButton offClick unregistered")
+          },
+        },
+        isExpanded: true,
+        viewportHeight: window.innerHeight,
+        viewportStableHeight: window.innerHeight,
+        themeParams: {
+          bg_color: "#ffffff",
+          text_color: "#000000",
+          hint_color: "#aaaaaa",
+          link_color: "#0000ff",
+          button_color: "#0088cc",
+          button_text_color: "#ffffff",
+          secondary_bg_color: "#f0f0f0",
+        },
+        colorScheme: "light",
+        version: "6.9",
+        platform: "tdesktop",
+        isVersionAtLeast: (version) => true, // Always true for mock
+        sendData: (data) => console.log("Telegram WebApp sendData:", data),
+        close: () => console.log("Telegram WebApp close"),
+        HapticFeedback: {
+          impactOccurred: (style) => console.log(`HapticFeedback impactOccurred: ${style}`),
+          notificationOccurred: (type) => console.log(`HapticFeedback notificationOccurred: ${type}`),
+          selectionChanged: () => console.log("HapticFeedback selectionChanged"),
+        },
+      },
     }
-  } catch (error) {
-    console.error("❌ Simulation failed:", error)
+  }
+
+  if (typeof window !== "undefined" && window.Telegram && window.Telegram.WebApp) {
+    window.Telegram.WebApp.ready()
+    window.Telegram.WebApp.expand()
+    console.log("Telegram WebApp simulated ready and expanded.")
+    console.log("Telegram WebApp initData:", window.Telegram.WebApp.initDataUnsafe)
+  } else {
+    console.warn("Telegram WebApp object not found or not in browser environment. Simulation skipped.")
   }
 }
 
-simulateAppLoad()
-
-// Wait for async operations
-setTimeout(() => {
-  console.log("\n🎯 DIAGNOSIS:")
-  console.log("If users can't see the game, the issue is likely:")
-  console.log("1. App is not loading the current game properly")
-  console.log("2. Game state is not being displayed in the UI")
-  console.log("3. Real-time subscriptions are not working")
-  console.log("4. Environment variables are not loaded in the app")
-  process.exit(0)
-}, 2000)
+// Call this function in your browser's console or integrate it into your dev setup
+// to test components that rely on Telegram WebApp.
+// simulateTelegramWebAppLoad();

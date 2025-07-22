@@ -7,6 +7,6 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
 }
 
-export default function HomePage() {
+export default function Page() {
   return <WheelGame />
 }

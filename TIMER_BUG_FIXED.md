@@ -153,7 +153,7 @@ ALTER TABLE games ADD COLUMN IF NOT EXISTS countdown_ends_at TIMESTAMP WITH TIME
 
 ## 🔄 Real-time Flow
 
-```mermaid
+\`\`\`mermaid
 graph TD
     A[Player Joins] --> B[Update Database]
     B --> C[Real-time Subscription Triggers]
@@ -164,3 +164,11 @@ graph TD
     G[Timer Updates] --> H[Database Calculates Remaining Time]
     H --> I[All Clients Sync Timer]
     I --> J[Countdown Displays Consistently]
+\`\`\`
+
+---
+**Status**: ✅ FIXED  
+**Date**: July 8, 2025  
+**Database Schema**: Updated (manual SQL may be required)  
+**Real-time Sync**: Fully functional  
+**Cross-device Timer**: Synchronized

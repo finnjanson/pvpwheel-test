@@ -310,7 +310,7 @@ This is a real-time synchronization issue. Here's how to fix it:
    # Clean up multiple waiting games
    npm run cleanup:games
    \`\`\`
-   
+
    Or manually in Supabase SQL Editor:
    \`\`\`sql
    -- Cancel all but the most recent waiting game

@@ -1,87 +1,36 @@
-const { createClient } = require("@supabase/supabase-js")
-require("dotenv").config({ path: ".env.local" })
-
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error("❌ Missing Supabase environment variables")
-  console.error("Please ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set")
-  process.exit(1)
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey)
+import { createClient } from "@supabase/supabase-js"
 
 async function cleanupDatabase() {
-  console.log("🧹 Starting database cleanup...")
+  const supabaseUrl = process.env.SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY // Use service key for cleanup
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables.")
+    return
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   try {
-    // 1. Delete all game participants
-    console.log("🗑️  Deleting all game participants...")
-    const { error: participantsError } = await supabase.from("game_participants").delete().not("id", "is", null) // Delete all rows
+    console.log("Starting database cleanup...")
 
-    if (participantsError) {
-      console.error("❌ Error deleting game participants:", participantsError)
-    } else {
-      console.log("✅ All game participants deleted")
-    }
+    // Example: Delete all rows from 'games' table
+    const { error: gamesError } = await supabase
+      .from("games")
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000") // Delete all except a dummy row if needed
+    if (gamesError) throw gamesError
+    console.log('Cleaned up "games" table.')
 
-    // 2. Delete all game logs
-    console.log("🗑️  Deleting all game logs...")
-    const { error: logsError } = await supabase.from("game_logs").delete().not("id", "is", null) // Delete all rows
+    // Example: Delete all rows from 'gifts' table (if it's dynamic)
+    // const { error: giftsError } = await supabase.from('gifts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    // if (giftsError) throw giftsError;
+    // console.log('Cleaned up "gifts" table.');
 
-    if (logsError) {
-      console.error("❌ Error deleting game logs:", logsError)
-    } else {
-      console.log("✅ All game logs deleted")
-    }
-
-    // 3. Delete all games (including waiting games)
-    console.log("🗑️  Deleting all games...")
-    const { error: gamesError } = await supabase.from("games").delete().not("id", "is", null) // Delete all rows
-
-    if (gamesError) {
-      console.error("❌ Error deleting games:", gamesError)
-    } else {
-      console.log("✅ All games deleted")
-    }
-
-    // 4. Check if any data remains
-    console.log("🔍 Checking remaining data...")
-
-    const { data: remainingGames, error: gamesCheckError } = await supabase.from("games").select("*")
-
-    const { data: remainingParticipants, error: participantsCheckError } = await supabase
-      .from("game_participants")
-      .select("*")
-
-    const { data: remainingLogs, error: logsCheckError } = await supabase.from("game_logs").select("*")
-
-    if (gamesCheckError || participantsCheckError || logsCheckError) {
-      console.error("❌ Error checking remaining data")
-    } else {
-      console.log("📊 Database state after cleanup:")
-      console.log(`   - Games: ${remainingGames?.length || 0}`)
-      console.log(`   - Participants: ${remainingParticipants?.length || 0}`)
-      console.log(`   - Logs: ${remainingLogs?.length || 0}`)
-    }
-
-    console.log("✅ Database cleanup completed successfully!")
-    console.log("🚀 The app will now start fresh when users visit")
+    console.log("Database cleanup complete.")
   } catch (error) {
-    console.error("❌ Unexpected error during cleanup:", error)
-    process.exit(1)
+    console.error("Error during database cleanup:", error.message)
   }
 }
 
-// Run cleanup
 cleanupDatabase()
-  .then(() => {
-    console.log("🎉 Cleanup finished! Your PvP Wheel is ready for fresh games.")
-    process.exit(0)
-  })
-  .catch((error) => {
-    console.error("💥 Cleanup failed:", error)
-    process.exit(1)
-  })
